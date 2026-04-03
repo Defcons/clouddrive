@@ -1,4 +1,4 @@
-export const APP_VERSION = '0.0.7'
+export const APP_VERSION = '0.0.8'
 
 export interface ChangelogEntry {
   version: string
@@ -7,6 +7,16 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {
+    version: '0.0.8',
+    date: '2026-04-03',
+    changes: [
+      'Home folder enforcement — non-admin users are restricted to their home folder',
+      'Sidebar loads from home folder, not root — users only see their own folder tree',
+      'Breadcrumb respects home folder — no navigation links above home directory',
+      'Backend enforces home folder restriction on all file operations',
+    ],
+  },
   {
     version: '0.0.7',
     date: '2026-04-03',
