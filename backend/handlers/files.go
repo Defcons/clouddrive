@@ -58,13 +58,30 @@ func (h *FileHandler) safePath(reqPath string) (string, error) {
 	return abs, nil
 }
 
-// checkAccess verifies the user can access the given path
+// checkAccess verifies the user can access the given path.
+// Non-admin users are restricted to their home folder.
 func (h *FileHandler) checkAccess(r *http.Request, filePath string) bool {
+	username := middleware.GetUsername(r)
+	role := middleware.GetRole(r)
+
+	// Enforce home folder restriction for non-admin users
+	if role != "admin" {
+		homeFolder := ""
+		if hf, ok := r.Context().Value("homeFolder").(string); ok {
+			homeFolder = hf
+		}
+		if homeFolder != "" && homeFolder != "/" {
+			cleanPath := filepath.ToSlash(filepath.Clean(filePath))
+			cleanHome := filepath.ToSlash(filepath.Clean(homeFolder))
+			if cleanPath != cleanHome && !strings.HasPrefix(cleanPath, cleanHome+"/") {
+				return false
+			}
+		}
+	}
+
 	if h.permStore == nil {
 		return true
 	}
-	username := middleware.GetUsername(r)
-	role := middleware.GetRole(r)
 	return h.permStore.CanAccess(filePath, username, role)
 }
 

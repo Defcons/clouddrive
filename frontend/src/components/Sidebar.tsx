@@ -11,6 +11,7 @@ interface TreeNode {
 
 interface Props {
   currentPath: string
+  homeFolder: string
   onNavigate: (path: string) => void
   onContextMenu: (e: React.MouseEvent, file: FileItem) => void
 }
@@ -193,7 +194,7 @@ function SidebarItemWrapper({
   )
 }
 
-export default function Sidebar({ currentPath, onNavigate, onContextMenu }: Props) {
+export default function Sidebar({ currentPath, homeFolder, onNavigate, onContextMenu }: Props) {
   const [rootFolders, setRootFolders] = useState<TreeNode[]>([])
   const [loading, setLoading] = useState(true)
   const [collapsed, setCollapsed] = useState(false)
@@ -206,9 +207,11 @@ export default function Sidebar({ currentPath, onNavigate, onContextMenu }: Prop
     return () => window.removeEventListener('quickaccess-updated', handler)
   }, [])
 
+  const rootPath = homeFolder || '/'
+
   useEffect(() => {
     setLoading(true)
-    listFiles('/')
+    listFiles(rootPath)
       .then((items: FileItem[]) => {
         const dirs = items
           .filter((f: FileItem) => f.isDir)
@@ -222,7 +225,7 @@ export default function Sidebar({ currentPath, onNavigate, onContextMenu }: Prop
       })
       .catch(() => {})
       .finally(() => setLoading(false))
-  }, [])
+  }, [rootPath])
 
   const handleRemoveQuickAccess = (e: React.MouseEvent, path: string) => {
     e.stopPropagation()
@@ -303,9 +306,9 @@ export default function Sidebar({ currentPath, onNavigate, onContextMenu }: Prop
 
         {/* Home / root */}
         <button
-          onClick={() => onNavigate('/')}
+          onClick={() => onNavigate(rootPath)}
           className={`w-full flex items-center gap-1.5 py-1 px-2 text-left text-sm rounded-md transition mb-0.5 ${
-            currentPath === '/'
+            currentPath === rootPath
               ? 'bg-blue-50 text-blue-700 font-medium'
               : 'text-gray-700 hover:bg-gray-100'
           }`}

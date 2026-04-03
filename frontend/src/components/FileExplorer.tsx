@@ -230,7 +230,7 @@ export default function FileExplorer({ initialPath, onLogout }: { initialPath: s
             onRefresh={refresh}
             onLogout={handleLogout}
           />
-          <Breadcrumb path={path} onNavigate={navigate} />
+          <Breadcrumb path={path} homeFolder={user.homeFolder} onNavigate={navigate} />
         </div>
       </header>
 
@@ -244,7 +244,7 @@ export default function FileExplorer({ initialPath, onLogout }: { initialPath: s
 
       {/* Main area with sidebar */}
       <div className="flex flex-1 min-h-0">
-        <Sidebar currentPath={path} onNavigate={navigate} onContextMenu={handleContextMenu} />
+        <Sidebar currentPath={path} homeFolder={user.homeFolder} onNavigate={navigate} onContextMenu={handleContextMenu} />
 
         {/* File list */}
         <UploadZone onUpload={handleUpload} uploadProgress={uploadProgress}>
