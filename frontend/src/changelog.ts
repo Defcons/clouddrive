@@ -1,0 +1,31 @@
+export const APP_VERSION = '1.0.0'
+
+export interface ChangelogEntry {
+  version: string
+  date: string
+  changes: string[]
+}
+
+export const CHANGELOG: ChangelogEntry[] = [
+  {
+    version: '1.0.0',
+    date: '2026-04-03',
+    changes: [
+      'Initial release — lightweight file explorer with Go backend and React frontend',
+      'File operations: browse, upload, download, rename, delete, create folders',
+      'JWT authentication with configurable credentials',
+      'List and grid view modes with file type icons',
+      'Drag & drop file upload with progress indicator',
+      'Right-click context menu for all file operations',
+      'File preview for images, PDFs, video, audio, and text files',
+      'Share links — public download links with 7-day expiry',
+      'Safe Share — password-protected share links',
+      'Sidebar with collapsible folder tree hierarchy',
+      'Quick Access — pin folders for fast navigation',
+      'Breadcrumb path navigation',
+      'Docker Compose deployment with Syncthing sidecar for cross-device sync',
+      'GitHub Actions auto-deploy on push to master',
+      'Deploy notification toast — detects server restarts and prompts refresh',
+    ],
+  },
+]

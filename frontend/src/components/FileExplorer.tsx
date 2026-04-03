@@ -9,6 +9,9 @@ import UploadZone from './UploadZone'
 import PreviewModal from './PreviewModal'
 import ShareModal from './ShareModal'
 import Sidebar from './Sidebar'
+import UpdateToast from './UpdateToast'
+import ChangelogModal from './ChangelogModal'
+import { APP_VERSION } from '../changelog'
 
 function formatSize(bytes: number): string {
   if (bytes === 0) return '—'
@@ -40,6 +43,7 @@ export default function FileExplorer({ onLogout }: { onLogout: () => void }) {
   const [previewFile, setPreviewFile] = useState<FileItemType | null>(null)
   const [shareFile, setShareFile] = useState<FileItemType | null>(null)
   const [shareSafe, setShareSafe] = useState(false)
+  const [showChangelog, setShowChangelog] = useState(false)
 
   const refresh = useCallback(async () => {
     setLoading(true)
@@ -171,7 +175,16 @@ export default function FileExplorer({ onLogout }: { onLogout: () => void }) {
       <header className="bg-white border-b border-gray-200 px-4 py-3 flex-shrink-0">
         <div className="max-w-7xl mx-auto space-y-2">
           <div className="flex items-center justify-between">
-            <h1 className="text-lg font-bold text-gray-800">CloudDrive</h1>
+            <div className="flex items-center gap-2">
+              <h1 className="text-lg font-bold text-gray-800">CloudDrive</h1>
+              <button
+                onClick={() => setShowChangelog(true)}
+                className="px-2 py-0.5 border border-gray-300 text-gray-500 text-xs font-mono rounded-md hover:border-blue-400 hover:text-blue-600 transition"
+                title="View changelog"
+              >
+                v{APP_VERSION}
+              </button>
+            </div>
           </div>
           <Toolbar
             viewMode={viewMode}
@@ -332,6 +345,12 @@ export default function FileExplorer({ onLogout }: { onLogout: () => void }) {
       {shareFile && (
         <ShareModal file={shareFile} safe={shareSafe} onClose={() => setShareFile(null)} />
       )}
+
+      {showChangelog && (
+        <ChangelogModal onClose={() => setShowChangelog(false)} />
+      )}
+
+      <UpdateToast />
     </div>
   )
 }

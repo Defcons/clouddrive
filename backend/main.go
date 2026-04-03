@@ -66,6 +66,10 @@ func main() {
 	mux.HandleFunc("GET /api/shares", authMiddleware.Wrap(shareHandler.List))
 	mux.HandleFunc("POST /api/shares/revoke", authMiddleware.Wrap(shareHandler.Revoke))
 
+	// Version (public — for update notifier polling)
+	versionHandler := handlers.NewVersionHandler()
+	mux.HandleFunc("GET /api/version", versionHandler.Info)
+
 	// Share download (public — no auth, GET + POST for password form)
 	mux.HandleFunc("/share/", shareHandler.Download)
 
