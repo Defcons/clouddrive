@@ -38,6 +38,7 @@ export default function FileExplorer({ onLogout }: { onLogout: () => void }) {
   const [renameValue, setRenameValue] = useState('')
   const [previewFile, setPreviewFile] = useState<FileItemType | null>(null)
   const [shareFile, setShareFile] = useState<FileItemType | null>(null)
+  const [shareSafe, setShareSafe] = useState(false)
 
   const refresh = useCallback(async () => {
     setLoading(true)
@@ -134,8 +135,9 @@ export default function FileExplorer({ onLogout }: { onLogout: () => void }) {
     setPreviewFile(file)
   }
 
-  const handleShare = (file: FileItemType) => {
+  const handleShare = (file: FileItemType, safe = false) => {
     setContextMenu(null)
+    setShareSafe(safe)
     setShareFile(file)
   }
 
@@ -301,7 +303,8 @@ export default function FileExplorer({ onLogout }: { onLogout: () => void }) {
           isDir={contextMenu.file.isDir}
           canPreview={isPreviewable(contextMenu.file.name)}
           onPreview={() => handlePreview(contextMenu.file)}
-          onShare={() => handleShare(contextMenu.file)}
+          onShare={() => handleShare(contextMenu.file, false)}
+          onSafeShare={() => handleShare(contextMenu.file, true)}
           onDownload={() => handleDownload(contextMenu.file)}
           onRename={() => handleRenameStart(contextMenu.file)}
           onDelete={() => handleDelete(contextMenu.file)}
@@ -314,7 +317,7 @@ export default function FileExplorer({ onLogout }: { onLogout: () => void }) {
       )}
 
       {shareFile && (
-        <ShareModal file={shareFile} onClose={() => setShareFile(null)} />
+        <ShareModal file={shareFile} safe={shareSafe} onClose={() => setShareFile(null)} />
       )}
     </div>
   )

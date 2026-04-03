@@ -149,11 +149,11 @@ export async function fetchTextPreview(path: string): Promise<string> {
   return res.text()
 }
 
-export async function createShare(path: string): Promise<{ token: string; url: string }> {
+export async function createShare(path: string, safe = false): Promise<{ token: string; url: string; password?: string }> {
   const res = await fetch(`${API_BASE}/shares`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...authHeaders() },
-    body: JSON.stringify({ path }),
+    body: JSON.stringify({ path, safe }),
   })
   if (!res.ok) throw new Error('Failed to create share')
   return res.json()

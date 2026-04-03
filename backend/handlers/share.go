@@ -21,6 +21,7 @@ type ShareEntry struct {
 	FilePath  string `json:"filePath"`
 	FileName  string `json:"fileName"`
 	IsDir     bool   `json:"isDir"`
+	Password  string `json:"password,omitempty"`
 	CreatedAt int64  `json:"createdAt"`
 	ExpiresAt int64  `json:"expiresAt"`
 }
@@ -66,10 +67,19 @@ func generateToken() (string, error) {
 	return hex.EncodeToString(b), nil
 }
 
+func generatePassword() (string, error) {
+	b := make([]byte, 4)
+	if _, err := rand.Read(b); err != nil {
+		return "", err
+	}
+	return hex.EncodeToString(b), nil
+}
+
 // Create generates a share link (requires auth — called from frontend)
 func (h *ShareHandler) Create(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		Path      string `json:"path"`
+		Safe      bool   `json:"safe"`
 		ExpiresIn int    `json:"expiresIn"` // hours, 0 = 7 days default
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -95,6 +105,15 @@ func (h *ShareHandler) Create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	var password string
+	if req.Safe {
+		password, err = generatePassword()
+		if err != nil {
+			http.Error(w, "Failed to generate password", http.StatusInternalServerError)
+			return
+		}
+	}
+
 	expiresIn := time.Duration(req.ExpiresIn) * time.Hour
 	if expiresIn <= 0 {
 		expiresIn = 7 * 24 * time.Hour // 7 days default
@@ -105,6 +124,7 @@ func (h *ShareHandler) Create(w http.ResponseWriter, r *http.Request) {
 		FilePath:  req.Path,
 		FileName:  info.Name(),
 		IsDir:     info.IsDir(),
+		Password:  password,
 		CreatedAt: time.Now().UnixMilli(),
 		ExpiresAt: time.Now().Add(expiresIn).UnixMilli(),
 	}
@@ -113,11 +133,16 @@ func (h *ShareHandler) Create(w http.ResponseWriter, r *http.Request) {
 	h.shares[token] = entry
 	h.mu.Unlock()
 
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]string{
+	resp := map[string]string{
 		"token": token,
 		"url":   fmt.Sprintf("/share/%s", token),
-	})
+	}
+	if password != "" {
+		resp["password"] = password
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(resp)
 }
 
 // List returns all active shares (requires auth)
@@ -156,6 +181,7 @@ func (h *ShareHandler) Revoke(w http.ResponseWriter, r *http.Request) {
 }
 
 // Download serves the shared file (NO auth — public endpoint)
+// For password-protected shares, accepts ?p=<password> or shows a password form
 func (h *ShareHandler) Download(w http.ResponseWriter, r *http.Request) {
 	// Extract token from URL: /share/{token}
 	token := strings.TrimPrefix(r.URL.Path, "/share/")
@@ -182,6 +208,26 @@ func (h *ShareHandler) Download(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Check password if required
+	if entry.Password != "" {
+		providedPassword := r.URL.Query().Get("p")
+
+		// POST form submission
+		if r.Method == "POST" {
+			r.ParseForm()
+			providedPassword = r.FormValue("password")
+		}
+
+		if providedPassword == "" {
+			h.servePasswordPage(w, token, entry.FileName, false)
+			return
+		}
+		if providedPassword != entry.Password {
+			h.servePasswordPage(w, token, entry.FileName, true)
+			return
+		}
+	}
+
 	absPath, err := h.safePath(entry.FilePath)
 	if err != nil {
 		http.Error(w, "File not found", http.StatusNotFound)
@@ -199,6 +245,50 @@ func (h *ShareHandler) Download(w http.ResponseWriter, r *http.Request) {
 	} else {
 		h.serveFile(w, absPath, info)
 	}
+}
+
+func (h *ShareHandler) servePasswordPage(w http.ResponseWriter, token string, fileName string, wrongPassword bool) {
+	errorHTML := ""
+	if wrongPassword {
+		errorHTML = `<div style="color:#ef4444;background:#fef2f2;padding:8px 12px;border-radius:8px;font-size:14px;margin-bottom:16px">Incorrect password</div>`
+	}
+
+	html := fmt.Sprintf(`<!DOCTYPE html>
+<html lang="en">
+<head>
+	<meta charset="UTF-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1.0">
+	<title>CloudDrive — Protected Share</title>
+	<style>
+		* { margin: 0; padding: 0; box-sizing: border-box; }
+		body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #f3f4f6; display: flex; align-items: center; justify-content: center; min-height: 100vh; }
+		.card { background: white; padding: 32px; border-radius: 16px; box-shadow: 0 4px 24px rgba(0,0,0,0.08); width: 100%%; max-width: 400px; margin: 16px; }
+		h1 { font-size: 20px; color: #1f2937; margin-bottom: 4px; }
+		.subtitle { color: #6b7280; font-size: 14px; margin-bottom: 24px; }
+		.filename { color: #374151; font-weight: 500; }
+		label { display: block; font-size: 14px; font-weight: 500; color: #374151; margin-bottom: 6px; }
+		input { width: 100%%; padding: 10px 14px; border: 1px solid #d1d5db; border-radius: 8px; font-size: 14px; outline: none; transition: border-color 0.2s; }
+		input:focus { border-color: #3b82f6; box-shadow: 0 0 0 3px rgba(59,130,246,0.1); }
+		button { width: 100%%; padding: 10px; background: #2563eb; color: white; border: none; border-radius: 8px; font-size: 14px; font-weight: 500; cursor: pointer; margin-top: 16px; transition: background 0.2s; }
+		button:hover { background: #1d4ed8; }
+	</style>
+</head>
+<body>
+	<div class="card">
+		<h1>Protected File</h1>
+		<p class="subtitle">Enter the password to download <span class="filename">%s</span></p>
+		%s
+		<form method="POST" action="/share/%s">
+			<label for="password">Password</label>
+			<input type="password" name="password" id="password" placeholder="Enter password" autofocus required />
+			<button type="submit">Download</button>
+		</form>
+	</div>
+</body>
+</html>`, fileName, errorHTML, token)
+
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.Write([]byte(html))
 }
 
 func (h *ShareHandler) serveFile(w http.ResponseWriter, absPath string, info os.FileInfo) {
