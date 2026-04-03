@@ -4,6 +4,8 @@ export interface FileItem {
   isDir: boolean
   size: number
   modTime: number
+  itemCount?: number
+  isPrivate?: boolean
 }
 
 export interface DiskUsage {

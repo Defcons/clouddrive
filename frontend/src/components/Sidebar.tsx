@@ -39,8 +39,11 @@ function SidebarItem({
     <div>
       <button
         onClick={() => {
-          onNavigate(node.path)
-          onToggle(node.path)
+          if (isActive) {
+            onToggle(node.path)
+          } else {
+            onNavigate(node.path)
+          }
         }}
         onContextMenu={(e) => {
           e.preventDefault()

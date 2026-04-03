@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { checkAuth } from './api'
+import { checkAuth, getCurrentUser } from './api'
 import LoginPage from './components/LoginPage'
 import FileExplorer from './components/FileExplorer'
 
@@ -22,5 +22,12 @@ export default function App() {
     return <LoginPage onLogin={() => setAuthenticated(true)} />
   }
 
-  return <FileExplorer onLogout={() => setAuthenticated(false)} />
+  const user = getCurrentUser()
+
+  return (
+    <FileExplorer
+      initialPath={user.homeFolder}
+      onLogout={() => setAuthenticated(false)}
+    />
+  )
 }

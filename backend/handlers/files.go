@@ -1,6 +1,8 @@
 package handlers
 
 import (
+	"clouddrive/middleware"
+	"clouddrive/services"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -13,19 +15,26 @@ import (
 )
 
 type FileHandler struct {
-	root string
+	root      string
+	permStore *services.PermissionStore
 }
 
 type FileInfo struct {
-	Name    string `json:"name"`
-	Path    string `json:"path"`
-	IsDir   bool   `json:"isDir"`
-	Size    int64  `json:"size"`
-	ModTime int64  `json:"modTime"`
+	Name      string `json:"name"`
+	Path      string `json:"path"`
+	IsDir     bool   `json:"isDir"`
+	Size      int64  `json:"size"`
+	ModTime   int64  `json:"modTime"`
+	ItemCount *int   `json:"itemCount,omitempty"`
+	IsPrivate bool   `json:"isPrivate,omitempty"`
 }
 
-func NewFileHandler(root string) *FileHandler {
-	return &FileHandler{root: root}
+func NewFileHandler(root string, permStore ...*services.PermissionStore) *FileHandler {
+	h := &FileHandler{root: root}
+	if len(permStore) > 0 {
+		h.permStore = permStore[0]
+	}
+	return h
 }
 
 // safePath resolves and validates a path is within the storage root.
@@ -49,10 +58,26 @@ func (h *FileHandler) safePath(reqPath string) (string, error) {
 	return abs, nil
 }
 
+// checkAccess verifies the user can access the given path
+func (h *FileHandler) checkAccess(r *http.Request, filePath string) bool {
+	if h.permStore == nil {
+		return true
+	}
+	username := middleware.GetUsername(r)
+	role := middleware.GetRole(r)
+	return h.permStore.CanAccess(filePath, username, role)
+}
+
 func (h *FileHandler) List(w http.ResponseWriter, r *http.Request) {
 	dirPath := r.URL.Query().Get("path")
 	if dirPath == "" {
 		dirPath = "/"
+	}
+
+	// Check if user can access this directory
+	if !h.checkAccess(r, dirPath) {
+		http.Error(w, "Access denied", http.StatusForbidden)
+		return
 	}
 
 	absPath, err := h.safePath(dirPath)
@@ -67,6 +92,9 @@ func (h *FileHandler) List(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	username := middleware.GetUsername(r)
+	role := middleware.GetRole(r)
+
 	files := make([]FileInfo, 0, len(entries))
 	for _, entry := range entries {
 		// Skip hidden files/dirs starting with dot
@@ -79,13 +107,37 @@ func (h *FileHandler) List(w http.ResponseWriter, r *http.Request) {
 		}
 		entryPath := filepath.Join(dirPath, entry.Name())
 		entryPath = filepath.ToSlash(entryPath)
-		files = append(files, FileInfo{
+
+		// Filter out directories the user can't access
+		if entry.IsDir() && h.permStore != nil {
+			if !h.permStore.CanAccess(entryPath, username, role) {
+				continue
+			}
+		}
+
+		fi := FileInfo{
 			Name:    entry.Name(),
 			Path:    entryPath,
 			IsDir:   entry.IsDir(),
 			Size:    info.Size(),
 			ModTime: info.ModTime().UnixMilli(),
-		})
+		}
+		if entry.IsDir() {
+			childEntries, err := os.ReadDir(filepath.Join(absPath, entry.Name()))
+			if err == nil {
+				count := 0
+				for _, ce := range childEntries {
+					if !strings.HasPrefix(ce.Name(), ".") {
+						count++
+					}
+				}
+				fi.ItemCount = &count
+			}
+			if h.permStore != nil {
+				fi.IsPrivate = h.permStore.IsPrivate(entryPath)
+			}
+		}
+		files = append(files, fi)
 	}
 
 	// Sort: directories first, then alphabetically
@@ -104,6 +156,11 @@ func (h *FileHandler) Download(w http.ResponseWriter, r *http.Request) {
 	filePath := r.URL.Query().Get("path")
 	if filePath == "" {
 		http.Error(w, "path required", http.StatusBadRequest)
+		return
+	}
+
+	if !h.checkAccess(r, filepath.ToSlash(filepath.Dir(filePath))) {
+		http.Error(w, "Access denied", http.StatusForbidden)
 		return
 	}
 
@@ -145,6 +202,11 @@ func (h *FileHandler) Preview(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if !h.checkAccess(r, filepath.ToSlash(filepath.Dir(filePath))) {
+		http.Error(w, "Access denied", http.StatusForbidden)
+		return
+	}
+
 	absPath, err := h.safePath(filePath)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
@@ -181,6 +243,11 @@ func (h *FileHandler) Upload(w http.ResponseWriter, r *http.Request) {
 	targetDir := r.URL.Query().Get("path")
 	if targetDir == "" {
 		targetDir = "/"
+	}
+
+	if !h.checkAccess(r, targetDir) {
+		http.Error(w, "Access denied", http.StatusForbidden)
+		return
 	}
 
 	absDir, err := h.safePath(targetDir)
@@ -240,6 +307,11 @@ func (h *FileHandler) Mkdir(w http.ResponseWriter, r *http.Request) {
 		parentPath = "/"
 	}
 
+	if !h.checkAccess(r, parentPath) {
+		http.Error(w, "Access denied", http.StatusForbidden)
+		return
+	}
+
 	absParent, err := h.safePath(parentPath)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
@@ -263,6 +335,11 @@ func (h *FileHandler) Rename(w http.ResponseWriter, r *http.Request) {
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, "Invalid request", http.StatusBadRequest)
+		return
+	}
+
+	if !h.checkAccess(r, filepath.ToSlash(filepath.Dir(req.OldPath))) {
+		http.Error(w, "Access denied", http.StatusForbidden)
 		return
 	}
 
@@ -292,6 +369,11 @@ func (h *FileHandler) Delete(w http.ResponseWriter, r *http.Request) {
 	filePath := r.URL.Query().Get("path")
 	if filePath == "" {
 		http.Error(w, "path required", http.StatusBadRequest)
+		return
+	}
+
+	if !h.checkAccess(r, filepath.ToSlash(filepath.Dir(filePath))) {
+		http.Error(w, "Access denied", http.StatusForbidden)
 		return
 	}
 

@@ -1,4 +1,4 @@
-export const APP_VERSION = '0.0.6'
+export const APP_VERSION = '0.0.7'
 
 export interface ChangelogEntry {
   version: string
@@ -7,6 +7,22 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {
+    version: '0.0.7',
+    date: '2026-04-03',
+    changes: [
+      'Fix sidebar collapse — folders now collapse on first click without needing to double-click',
+      'Folder item count — folders show "X items" instead of empty size',
+      'Multi-user auth — users.json config with bcrypt passwords, JWT with role/homeFolder claims',
+      'Home folder — each user auto-navigates to their configured home folder on login',
+      'Settings modal — view account info and change password (gear icon in header)',
+      'Username displayed in header next to version badge',
+      'Private folders — right-click a folder to "Make Private" restricting access to you only',
+      'Lock icon overlay on private folders in file listing',
+      'Permission enforcement on all file operations (list, download, upload, delete, rename, share)',
+      'Backward compatible — auto-migrates from env var credentials to users.json',
+    ],
+  },
   {
     version: '0.0.6',
     date: '2026-04-03',

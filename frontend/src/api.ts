@@ -18,6 +18,9 @@ export async function login(username: string, password: string) {
   if (!res.ok) throw new Error('Invalid credentials')
   const data = await res.json()
   localStorage.setItem('token', data.token)
+  localStorage.setItem('username', data.username)
+  localStorage.setItem('role', data.role)
+  localStorage.setItem('homeFolder', data.homeFolder)
   return data
 }
 
@@ -34,6 +37,30 @@ export async function checkAuth(): Promise<boolean> {
 
 export function logout() {
   localStorage.removeItem('token')
+  localStorage.removeItem('username')
+  localStorage.removeItem('role')
+  localStorage.removeItem('homeFolder')
+}
+
+export function getCurrentUser() {
+  return {
+    username: localStorage.getItem('username') || '',
+    role: localStorage.getItem('role') || '',
+    homeFolder: localStorage.getItem('homeFolder') || '/',
+  }
+}
+
+export async function changePassword(currentPassword: string, newPassword: string) {
+  const res = await fetch(`${API_BASE}/auth/change-password`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...authHeaders() },
+    body: JSON.stringify({ currentPassword, newPassword }),
+  })
+  if (!res.ok) {
+    const text = await res.text()
+    throw new Error(text || 'Failed to change password')
+  }
+  return res.json()
 }
 
 export async function listFiles(path: string) {
@@ -147,6 +174,25 @@ export async function fetchTextPreview(path: string): Promise<string> {
   })
   if (!res.ok) throw new Error('Failed to load preview')
   return res.text()
+}
+
+export async function setFolderPrivate(path: string, allowedUsers?: string[]) {
+  const res = await fetch(`${API_BASE}/files/permissions`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...authHeaders() },
+    body: JSON.stringify({ path, allowedUsers: allowedUsers || [] }),
+  })
+  if (!res.ok) throw new Error('Failed to set permissions')
+  return res.json()
+}
+
+export async function removeFolderPrivate(path: string) {
+  const res = await fetch(`${API_BASE}/files/permissions?path=${encodeURIComponent(path)}`, {
+    method: 'DELETE',
+    headers: authHeaders(),
+  })
+  if (!res.ok) throw new Error('Failed to remove permissions')
+  return res.json()
 }
 
 export async function createShare(path: string, safe = false): Promise<{ token: string; url: string; password?: string }> {
