@@ -15,6 +15,7 @@ import ChangelogModal from './ChangelogModal'
 import SettingsModal from './SettingsModal'
 import { APP_VERSION } from '../changelog'
 import { getCurrentUser } from '../api'
+import { useTheme } from '../hooks/useTheme'
 
 function formatSize(bytes: number): string {
   if (bytes === 0) return '—'
@@ -78,6 +79,7 @@ export default function FileExplorer({ initialPath, onLogout }: { initialPath: s
   const [sortBy, setSortBy] = useState<'name' | 'size' | 'createdAt' | 'modTime'>('name')
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc')
   const user = getCurrentUser()
+  const { theme, toggle: toggleTheme } = useTheme()
 
   const handleSort = (column: 'name' | 'size' | 'createdAt' | 'modTime') => {
     if (sortBy === column) {
@@ -421,9 +423,9 @@ export default function FileExplorer({ initialPath, onLogout }: { initialPath: s
   }
 
   return (
-    <div className="h-screen flex flex-col">
+    <div className="h-screen flex flex-col bg-gray-50 dark:bg-gray-900">
       {/* Header */}
-      <header className="bg-white border-b border-gray-200 px-4 py-3 flex-shrink-0">
+      <header className="bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 px-4 py-3 flex-shrink-0">
         <div className="max-w-7xl mx-auto space-y-2">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
@@ -435,11 +437,26 @@ export default function FileExplorer({ initialPath, onLogout }: { initialPath: s
               >
                 v{APP_VERSION}
               </button>
-              <span className="text-xs text-gray-400">|</span>
-              <span className="text-xs text-gray-500">{user.username}</span>
+              <span className="text-xs text-gray-400 dark:text-gray-600">|</span>
+              <span className="text-xs text-gray-500 dark:text-gray-400">{user.username}</span>
+              <button
+                onClick={toggleTheme}
+                className="p-1 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-md transition"
+                title={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
+              >
+                {theme === 'dark' ? (
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z" />
+                  </svg>
+                ) : (
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z" />
+                  </svg>
+                )}
+              </button>
               <button
                 onClick={() => setShowSettings(true)}
-                className="p-1 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-md transition"
+                className="p-1 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-md transition"
                 title="Settings"
               >
                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -461,7 +478,7 @@ export default function FileExplorer({ initialPath, onLogout }: { initialPath: s
             <button
               onClick={goBack}
               disabled={history.length === 0}
-              className="flex items-center gap-1 px-2 py-1 text-xs font-medium text-gray-600 bg-gray-100 rounded-md hover:bg-gray-200 transition disabled:opacity-30 disabled:hover:bg-gray-100"
+              className="flex items-center gap-1 px-2 py-1 text-xs font-medium text-gray-600 dark:text-gray-300 bg-gray-100 dark:bg-gray-700 rounded-md hover:bg-gray-200 dark:hover:bg-gray-600 transition disabled:opacity-30"
             >
               <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
@@ -471,7 +488,7 @@ export default function FileExplorer({ initialPath, onLogout }: { initialPath: s
             <button
               onClick={goUp}
               disabled={path === (user.homeFolder || '/')}
-              className="flex items-center gap-1 px-2 py-1 text-xs font-medium text-gray-600 bg-gray-100 rounded-md hover:bg-gray-200 transition disabled:opacity-30 disabled:hover:bg-gray-100"
+              className="flex items-center gap-1 px-2 py-1 text-xs font-medium text-gray-600 dark:text-gray-300 bg-gray-100 dark:bg-gray-700 rounded-md hover:bg-gray-200 dark:hover:bg-gray-600 transition disabled:opacity-30"
             >
               <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" />
@@ -486,7 +503,7 @@ export default function FileExplorer({ initialPath, onLogout }: { initialPath: s
 
       {/* Error banner */}
       {error && (
-        <div className="bg-red-50 text-red-600 px-4 py-2 text-sm flex items-center justify-between flex-shrink-0">
+        <div className="bg-red-50 dark:bg-red-900/30 text-red-600 dark:text-red-400 px-4 py-2 text-sm flex items-center justify-between flex-shrink-0">
           <span>{error}</span>
           <button onClick={() => setError('')} className="text-red-400 hover:text-red-600">&times;</button>
         </div>
@@ -500,7 +517,7 @@ export default function FileExplorer({ initialPath, onLogout }: { initialPath: s
         <UploadZone onUpload={handleUpload} uploadProgress={uploadProgress}>
           <div className="w-full p-4 overflow-auto flex-1">
           {selectedFiles.size > 0 && (
-            <div className="flex items-center gap-3 mb-3 px-2 py-2 bg-blue-50 rounded-lg border border-blue-200">
+            <div className="flex items-center gap-3 mb-3 px-2 py-2 bg-blue-50 dark:bg-blue-900/30 rounded-lg border border-blue-200 dark:border-blue-800">
               <span className="text-sm text-blue-700 font-medium">
                 {selectedFiles.size} item{selectedFiles.size !== 1 ? 's' : ''} selected
               </span>
@@ -544,7 +561,7 @@ export default function FileExplorer({ initialPath, onLogout }: { initialPath: s
                 <col style={{ width: '160px' }} />
               </colgroup>
               <thead>
-                <tr className="text-left text-xs text-gray-500 uppercase tracking-wider border-b border-gray-200">
+                <tr className="text-left text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wider border-b border-gray-200 dark:border-gray-700">
                   <th className="pb-2 pl-1">
                     <input
                       type="checkbox"
@@ -569,8 +586,8 @@ export default function FileExplorer({ initialPath, onLogout }: { initialPath: s
                 {sortedFiles.map((file) => (
                   <tr
                     key={file.path}
-                    className={`cursor-pointer group border-b border-gray-100 last:border-0 ${
-                      selectedFiles.has(file.path) ? 'bg-blue-50' : 'hover:bg-gray-50'
+                    className={`cursor-pointer group border-b border-gray-100 dark:border-gray-800 last:border-0 ${
+                      selectedFiles.has(file.path) ? 'bg-blue-50 dark:bg-blue-900/30' : 'hover:bg-gray-50 dark:hover:bg-gray-800'
                     }`}
                     onClick={(e) => handleClick(e, file)}
                     onDoubleClick={() => handleDoubleClick(file)}
@@ -622,20 +639,20 @@ export default function FileExplorer({ initialPath, onLogout }: { initialPath: s
                             onClick={(e) => e.stopPropagation()}
                           />
                         ) : (
-                          <span className="text-sm text-gray-800 group-hover:text-blue-600 transition">
+                          <span className="text-sm text-gray-800 dark:text-gray-200 group-hover:text-blue-600 dark:group-hover:text-blue-400 transition">
                             {file.name}
                           </span>
                         )}
                       </div>
                     </td>
-                    <td className="py-2 text-right text-sm text-gray-500 whitespace-nowrap">
+                    <td className="py-2 text-right text-sm text-gray-500 dark:text-gray-400 whitespace-nowrap">
                       {file.isDir
                         ? file.itemCount !== undefined
                           ? `${file.itemCount} item${file.itemCount !== 1 ? 's' : ''}`
                           : '—'
                         : formatSize(file.size)}
                     </td>
-                    <td className="py-2 text-right text-sm text-gray-500 whitespace-nowrap">
+                    <td className="py-2 text-right text-sm text-gray-500 dark:text-gray-400 whitespace-nowrap">
                       {formatDate(file.createdAt)}
                     </td>
                     <td className="py-2 text-right text-sm text-gray-500 pr-2 whitespace-nowrap">

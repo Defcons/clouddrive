@@ -22,30 +22,30 @@ export default function LoginPage({ onLogin }: { onLogin: () => void }) {
   }
 
   return (
-    <div className="h-screen flex items-center justify-center bg-gray-100">
-      <form onSubmit={handleSubmit} className="bg-white p-8 rounded-xl shadow-lg w-full max-w-sm">
-        <h1 className="text-2xl font-bold mb-1 text-gray-800">CloudDrive</h1>
-        <p className="text-gray-500 mb-6 text-sm">Sign in to access your files</p>
+    <div className="h-screen flex items-center justify-center bg-gray-100 dark:bg-gray-900">
+      <form onSubmit={handleSubmit} className="bg-white dark:bg-gray-800 p-8 rounded-xl shadow-lg w-full max-w-sm">
+        <h1 className="text-2xl font-bold mb-1 text-gray-800 dark:text-gray-100">CloudDrive</h1>
+        <p className="text-gray-500 dark:text-gray-400 mb-6 text-sm">Sign in to access your files</p>
 
         {error && (
           <div className="mb-4 p-3 bg-red-50 text-red-600 rounded-lg text-sm">{error}</div>
         )}
 
-        <label className="block mb-1 text-sm font-medium text-gray-700">Username</label>
+        <label className="block mb-1 text-sm font-medium text-gray-700 dark:text-gray-300">Username</label>
         <input
           type="text"
           value={username}
           onChange={(e) => setUsername(e.target.value)}
-          className="w-full mb-4 px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+          className="w-full mb-4 px-3 py-2 border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
           autoFocus
         />
 
-        <label className="block mb-1 text-sm font-medium text-gray-700">Password</label>
+        <label className="block mb-1 text-sm font-medium text-gray-700 dark:text-gray-300">Password</label>
         <input
           type="password"
           value={password}
           onChange={(e) => setPassword(e.target.value)}
-          className="w-full mb-6 px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+          className="w-full mb-6 px-3 py-2 border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
         />
 
         <button
