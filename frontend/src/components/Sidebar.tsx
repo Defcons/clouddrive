@@ -15,7 +15,7 @@ interface Props {
   onNavigate: (path: string) => void
   onContextMenu: (e: React.MouseEvent, file: FileItem) => void
   onShowTrash: () => void
-  diskUsage: { totalSize: number } | null
+  diskUsage: { totalSize: number; totalSpace: number; freeSpace: number; perUser?: { username: string; size: number }[] } | null
   onDrop?: (paths: string[], destination: string) => void
 }
 
@@ -439,11 +439,34 @@ export default function Sidebar({ currentPath, homeFolder, onNavigate, onContext
 
       {/* Storage usage */}
       {diskUsage && (
-        <div className="border-t border-gray-100 dark:border-gray-700 px-3 py-2">
-          <div className="text-xs text-gray-400 mb-1">{formatBytes(diskUsage.totalSize)} used</div>
-          <div className="h-1 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
-            <div className="h-full bg-blue-500 rounded-full" style={{ width: '100%' }} />
+        <div className="border-t border-gray-100 dark:border-gray-700 px-3 py-2 group relative">
+          <div className="text-xs text-gray-400 mb-1">
+            {formatBytes(diskUsage.totalSize)} used{diskUsage.totalSpace > 0 ? ` of ${formatBytes(diskUsage.totalSpace)}` : ''}
           </div>
+          <div className="h-1.5 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
+            <div
+              className="h-full bg-blue-500 rounded-full transition-all"
+              style={{ width: diskUsage.totalSpace > 0 ? `${Math.min(100, (diskUsage.totalSize / diskUsage.totalSpace) * 100)}%` : '0%' }}
+            />
+          </div>
+          {/* Per-user tooltip */}
+          {diskUsage.perUser && diskUsage.perUser.length > 0 && (
+            <div className="absolute bottom-full left-0 right-0 mb-2 bg-gray-800 dark:bg-gray-700 text-white rounded-lg shadow-xl p-3 hidden group-hover:block z-50">
+              <div className="text-xs font-medium mb-2">Storage by folder</div>
+              {diskUsage.perUser.map((u) => (
+                <div key={u.username} className="flex items-center justify-between text-xs py-0.5">
+                  <span className="text-gray-300">{u.username}</span>
+                  <span className="text-gray-400 font-mono">{formatBytes(u.size)}</span>
+                </div>
+              ))}
+              {diskUsage.freeSpace > 0 && (
+                <div className="flex items-center justify-between text-xs py-0.5 mt-1 pt-1 border-t border-gray-600">
+                  <span className="text-gray-300">Free</span>
+                  <span className="text-gray-400 font-mono">{formatBytes(diskUsage.freeSpace)}</span>
+                </div>
+              )}
+            </div>
+          )}
         </div>
       )}
     </div>

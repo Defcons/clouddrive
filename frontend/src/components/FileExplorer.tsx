@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import type { FileItem as FileItemType, ViewMode, Clipboard, TAG_COLORS } from '../types'
-import { listFiles, downloadFile, uploadFiles, createFolder, renameFile, deleteFile, logout, isPreviewable, addQuickAccess, setFolderPrivate, removeFolderPrivate, moveFiles, copyFiles, extractZip, compressFiles, setFileTags, getDiskUsage } from '../api'
+import { listFiles, downloadFile, uploadFiles, createFolder, renameFile, deleteFile, logout, isPreviewable, addQuickAccess, setFolderPrivate, removeFolderPrivate, moveFiles, copyFiles, extractZip, compressFiles, setFileTags, getDiskUsage, getPreviewUrl } from '../api'
 import Breadcrumb from './Breadcrumb'
 import Toolbar from './Toolbar'
 import FileIcon from './FileIcon'
@@ -824,7 +824,16 @@ export default function FileExplorer({ initialPath, onLogout }: { initialPath: s
                     <td className="py-2 pl-2">
                       <div className="flex items-center gap-2.5">
                         <div className="relative flex-shrink-0">
-                          <FileIcon name={file.name} isDir={file.isDir} />
+                          {!file.isDir && /\.(jpg|jpeg|png|gif|webp|svg|bmp)$/i.test(file.name) ? (
+                            <img
+                              src={getPreviewUrl(file.path)}
+                              alt=""
+                              className="w-5 h-5 rounded object-cover"
+                              loading="lazy"
+                            />
+                          ) : (
+                            <FileIcon name={file.name} isDir={file.isDir} />
+                          )}
                           {file.isPrivate && (
                             <svg className="w-2.5 h-2.5 text-orange-500 absolute -bottom-0.5 -right-0.5" fill="currentColor" viewBox="0 0 20 20">
                               <path fillRule="evenodd" d="M5 9V7a5 5 0 0110 0v2a2 2 0 012 2v5a2 2 0 01-2 2H5a2 2 0 01-2-2v-5a2 2 0 012-2zm8-2v2H7V7a3 3 0 016 0z" clipRule="evenodd" />
@@ -886,13 +895,27 @@ export default function FileExplorer({ initialPath, onLogout }: { initialPath: s
                     }
                   }}
                 >
-                  <div className="w-12 h-12 flex items-center justify-center mb-2">
+                  <div className="w-20 h-20 flex items-center justify-center mb-2 rounded-lg overflow-hidden">
                     {file.isDir ? (
-                      <svg className="w-10 h-10 text-blue-400" fill="currentColor" viewBox="0 0 20 20">
+                      <svg className="w-12 h-12 text-blue-400" fill="currentColor" viewBox="0 0 20 20">
                         <path d="M2 6a2 2 0 012-2h5l2 2h5a2 2 0 012 2v6a2 2 0 01-2 2H4a2 2 0 01-2-2V6z" />
                       </svg>
+                    ) : /\.(jpg|jpeg|png|gif|webp|svg|bmp)$/i.test(file.name) ? (
+                      <img
+                        src={getPreviewUrl(file.path)}
+                        alt={file.name}
+                        className="w-full h-full object-cover"
+                        loading="lazy"
+                        onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; (e.target as HTMLImageElement).nextElementSibling?.classList.remove('hidden') }}
+                      />
                     ) : (
-                      <svg className="w-10 h-10 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <svg className="w-12 h-12 text-gray-300 dark:text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
+                      </svg>
+                    )}
+                    {/* Fallback icon if image fails to load */}
+                    {/\.(jpg|jpeg|png|gif|webp|svg|bmp)$/i.test(file.name) && (
+                      <svg className="w-12 h-12 text-gray-300 dark:text-gray-600 hidden" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
                       </svg>
                     )}
@@ -921,14 +944,27 @@ export default function FileExplorer({ initialPath, onLogout }: { initialPath: s
           )}
           {/* Empty space — right-click to paste */}
           <div
-            className="min-h-[100px] flex-1"
+            className={`min-h-[120px] flex-1 rounded-lg mt-2 transition ${
+              clipboard
+                ? 'border-2 border-dashed border-gray-300 dark:border-gray-600 cursor-pointer hover:border-blue-400 dark:hover:border-blue-500 hover:bg-blue-50/30 dark:hover:bg-blue-900/10'
+                : ''
+            }`}
             onContextMenu={(e) => {
               if (clipboard) {
                 e.preventDefault()
                 setContextMenu({ x: e.clientX, y: e.clientY, file: { name: '__paste__', path: '', isDir: false, size: 0, createdAt: 0, modTime: 0 } as FileItemType })
               }
             }}
-          />
+            onClick={() => {
+              if (clipboard) handlePaste()
+            }}
+          >
+            {clipboard && (
+              <div className="flex items-center justify-center h-full min-h-[120px] text-gray-400 dark:text-gray-600 text-sm">
+                <span>Click or right-click to paste {clipboard.paths.length} {clipboard.mode === 'cut' ? 'cut' : 'copied'} item{clipboard.paths.length !== 1 ? 's' : ''} here</span>
+              </div>
+            )}
+          </div>
           {sortedFiles.length > visibleCount && (
             <div className="text-center py-4">
               <button
