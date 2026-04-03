@@ -131,6 +131,8 @@ function SidebarItemWrapper({
   onContextMenu: (e: React.MouseEvent, file: FileItem) => void
 }) {
   const [expanded, setExpanded] = useState(false)
+  const [manuallyExpanded, setManuallyExpanded] = useState(false)
+  const [autoExpanded, setAutoExpanded] = useState(false)
   const [localNode, setLocalNode] = useState(node)
 
   // Keep in sync with parent
@@ -144,11 +146,17 @@ function SidebarItemWrapper({
 
   // Auto-expand if current path is inside this node
   useEffect(() => {
-    if (currentPath.startsWith(node.path + '/') || currentPath === node.path) {
+    const isInside = currentPath.startsWith(node.path + '/') || currentPath === node.path
+    if (isInside) {
       if (!expanded) {
         setExpanded(true)
+        setAutoExpanded(true)
         loadChildren()
       }
+    } else if (autoExpanded && !manuallyExpanded) {
+      // Auto-collapse when navigating away, unless user manually expanded
+      setExpanded(false)
+      setAutoExpanded(false)
     }
   }, [currentPath])
 
@@ -156,9 +164,14 @@ function SidebarItemWrapper({
   useEffect(() => {
     const handleExpand = () => {
       setExpanded(true)
+      setManuallyExpanded(true)
       loadChildren()
     }
-    const handleCollapse = () => setExpanded(false)
+    const handleCollapse = () => {
+      setExpanded(false)
+      setManuallyExpanded(false)
+      setAutoExpanded(false)
+    }
     window.addEventListener('sidebar-expand-all', handleExpand)
     window.addEventListener('sidebar-collapse-all', handleCollapse)
     return () => {
@@ -190,8 +203,12 @@ function SidebarItemWrapper({
     if (path === node.path) {
       const newExpanded = !expanded
       setExpanded(newExpanded)
-      if (newExpanded && localNode.children === null) {
-        loadChildren()
+      if (newExpanded) {
+        setManuallyExpanded(true)
+        if (localNode.children === null) loadChildren()
+      } else {
+        setManuallyExpanded(false)
+        setAutoExpanded(false)
       }
     }
   }
