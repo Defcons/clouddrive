@@ -9,9 +9,9 @@ services:
       - /mnt/storage:/data
     environment:
       - STORAGE_ROOT=/data
-      - JWT_SECRET=change-this-to-a-random-secret
-      - USERNAME=admin
-      - PASSWORD=changeme
+      - JWT_SECRET=REDACTED
+      - USERNAME=Martin
+      - PASSWORD=REDACTED
       - PORT=8080
 
   syncthing:
