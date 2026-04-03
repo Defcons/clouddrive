@@ -13,7 +13,7 @@ interface Props {
   onNavigate: (path: string) => void
   onShowRecent: () => void
   clipboard: Clipboard | null
-  searchRef?: React.RefObject<HTMLInputElement | null>
+  searchRef?: React.Ref<HTMLInputElement>
 }
 
 export default function Toolbar({ viewMode, onViewModeChange, onUpload, onNewFolder, onRefresh, onLogout, onPaste, onNavigate, onShowRecent, clipboard, searchRef }: Props) {
