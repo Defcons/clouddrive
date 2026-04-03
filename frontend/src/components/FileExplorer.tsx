@@ -7,6 +7,7 @@ import FileIcon from './FileIcon'
 import ContextMenu from './ContextMenu'
 import UploadZone from './UploadZone'
 import PreviewModal from './PreviewModal'
+import ShareModal from './ShareModal'
 
 function formatSize(bytes: number): string {
   if (bytes === 0) return '—'
@@ -36,6 +37,7 @@ export default function FileExplorer({ onLogout }: { onLogout: () => void }) {
   const [renaming, setRenaming] = useState<string | null>(null)
   const [renameValue, setRenameValue] = useState('')
   const [previewFile, setPreviewFile] = useState<FileItemType | null>(null)
+  const [shareFile, setShareFile] = useState<FileItemType | null>(null)
 
   const refresh = useCallback(async () => {
     setLoading(true)
@@ -130,6 +132,11 @@ export default function FileExplorer({ onLogout }: { onLogout: () => void }) {
   const handlePreview = (file: FileItemType) => {
     setContextMenu(null)
     setPreviewFile(file)
+  }
+
+  const handleShare = (file: FileItemType) => {
+    setContextMenu(null)
+    setShareFile(file)
   }
 
   const handleLogout = () => {
@@ -294,6 +301,7 @@ export default function FileExplorer({ onLogout }: { onLogout: () => void }) {
           isDir={contextMenu.file.isDir}
           canPreview={isPreviewable(contextMenu.file.name)}
           onPreview={() => handlePreview(contextMenu.file)}
+          onShare={() => handleShare(contextMenu.file)}
           onDownload={() => handleDownload(contextMenu.file)}
           onRename={() => handleRenameStart(contextMenu.file)}
           onDelete={() => handleDelete(contextMenu.file)}
@@ -303,6 +311,10 @@ export default function FileExplorer({ onLogout }: { onLogout: () => void }) {
 
       {previewFile && (
         <PreviewModal file={previewFile} onClose={() => setPreviewFile(null)} />
+      )}
+
+      {shareFile && (
+        <ShareModal file={shareFile} onClose={() => setShareFile(null)} />
       )}
     </div>
   )

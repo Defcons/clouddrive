@@ -44,6 +44,7 @@ func main() {
 	authHandler := handlers.NewAuthHandler(username, password, jwtSecret)
 	authMiddleware := middleware.NewAuthMiddleware(jwtSecret)
 	diskHandler := handlers.NewDiskHandler(storageRoot)
+	shareHandler := handlers.NewShareHandler(storageRoot)
 
 	mux := http.NewServeMux()
 
@@ -59,6 +60,14 @@ func main() {
 	mux.HandleFunc("POST /api/files/mkdir", authMiddleware.Wrap(fileHandler.Mkdir))
 	mux.HandleFunc("POST /api/files/rename", authMiddleware.Wrap(fileHandler.Rename))
 	mux.HandleFunc("DELETE /api/files", authMiddleware.Wrap(fileHandler.Delete))
+
+	// Shares (management — protected)
+	mux.HandleFunc("POST /api/shares", authMiddleware.Wrap(shareHandler.Create))
+	mux.HandleFunc("GET /api/shares", authMiddleware.Wrap(shareHandler.List))
+	mux.HandleFunc("POST /api/shares/revoke", authMiddleware.Wrap(shareHandler.Revoke))
+
+	// Share download (public — no auth)
+	mux.HandleFunc("/share/", shareHandler.Download)
 
 	// Disk
 	mux.HandleFunc("GET /api/disk", authMiddleware.Wrap(diskHandler.Usage))
