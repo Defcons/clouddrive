@@ -23,6 +23,10 @@ import { useTheme } from '../hooks/useTheme'
 import { useToast } from '../hooks/useToast'
 import ToastContainer from './ToastContainer'
 import LoadingSkeleton from './LoadingSkeleton'
+import KeyboardHelp from './KeyboardHelp'
+import FileInfoPanel from './FileInfoPanel'
+import FileFilter, { getFilterExtensions } from './FileFilter'
+import BatchRename from './BatchRename'
 
 function formatSize(bytes: number): string {
   if (bytes === 0) return '—'
@@ -87,6 +91,10 @@ export default function FileExplorer({ initialPath, onLogout }: { initialPath: s
   const [showTrash, setShowTrash] = useState(false)
   const [showRecent, setShowRecent] = useState(false)
   const [clipboard, setClipboard] = useState<Clipboard | null>(null)
+  const [showKeyboardHelp, setShowKeyboardHelp] = useState(false)
+  const [showInfoPanel, setShowInfoPanel] = useState(false)
+  const [fileFilter, setFileFilter] = useState('')
+  const [showBatchRename, setShowBatchRename] = useState(false)
   const [diskUsage, setDiskUsage] = useState<{ totalSize: number; totalSpace: number; freeSpace: number; perUser?: { username: string; size: number }[] } | null>(null)
   const searchRef = useRef<HTMLInputElement>(null)
   const [sortBy, setSortBy] = useState<'name' | 'size' | 'createdAt' | 'modTime'>(() => (localStorage.getItem('clouddrive_sortBy') as any) || 'name')
@@ -97,6 +105,20 @@ export default function FileExplorer({ initialPath, onLogout }: { initialPath: s
   const user = getCurrentUser()
   const { theme, toggle: toggleTheme } = useTheme()
   const toast = useToast()
+
+  // Bookmarkable URLs via hash
+  useEffect(() => {
+    window.location.hash = encodeURIComponent(path)
+  }, [path])
+
+  useEffect(() => {
+    const handler = () => {
+      const hash = decodeURIComponent(window.location.hash.slice(1))
+      if (hash && hash !== path) setPath(hash)
+    }
+    window.addEventListener('hashchange', handler)
+    return () => window.removeEventListener('hashchange', handler)
+  }, [path])
 
   // Save preferences
   useEffect(() => { localStorage.setItem('clouddrive_viewMode', viewMode) }, [viewMode])
@@ -150,6 +172,17 @@ export default function FileExplorer({ initialPath, onLogout }: { initialPath: s
     }
     return sortDir === 'asc' ? cmp : -cmp
   })
+
+  // Apply file type filter
+  const filteredFiles = fileFilter
+    ? sortedFiles.filter((f) => {
+        if (f.isDir) return true // always show directories
+        const exts = getFilterExtensions(fileFilter)
+        if (!exts) return true
+        const ext = f.name.split('.').pop()?.toLowerCase() || ''
+        return exts.includes(ext)
+      })
+    : sortedFiles
 
   const refresh = useCallback(async () => {
     setLoading(true)
@@ -244,6 +277,12 @@ export default function FileExplorer({ initialPath, onLogout }: { initialPath: s
         if (file) { setRenaming(file.path); setRenameValue(file.name) }
         return
       }
+
+      // ? — keyboard help
+      if (e.key === '?' && !isInput) { setShowKeyboardHelp(true); return }
+
+      // i — toggle info panel
+      if (e.key === 'i' && !isInput && !mod && selectedFiles.size === 1) { setShowInfoPanel((v) => !v); return }
 
       if (e.key === 'Enter' && !isInput && selectedFiles.size === 1) {
         const file = files.find((f) => f.path === Array.from(selectedFiles)[0])
@@ -485,14 +524,14 @@ export default function FileExplorer({ initialPath, onLogout }: { initialPath: s
 
   // Multi-select
   const selectRange = (fromPath: string, toPath: string) => {
-    const fromIdx = sortedFiles.findIndex((f) => f.path === fromPath)
-    const toIdx = sortedFiles.findIndex((f) => f.path === toPath)
+    const fromIdx = filteredFiles.findIndex((f) => f.path === fromPath)
+    const toIdx = filteredFiles.findIndex((f) => f.path === toPath)
     if (fromIdx >= 0 && toIdx >= 0) {
       const start = Math.min(fromIdx, toIdx)
       const end = Math.max(fromIdx, toIdx)
       const newSelection = new Set(selectedFiles)
       for (let i = start; i <= end; i++) {
-        newSelection.add(sortedFiles[i].path)
+        newSelection.add(filteredFiles[i].path)
       }
       setSelectedFiles(newSelection)
     }
@@ -535,7 +574,7 @@ export default function FileExplorer({ initialPath, onLogout }: { initialPath: s
   }
 
   const getSelectedFileObjects = (): FileItemType[] => {
-    return sortedFiles.filter((f) => selectedFiles.has(f.path))
+    return filteredFiles.filter((f) => selectedFiles.has(f.path))
   }
 
   const handleBulkDownload = async () => {
@@ -649,6 +688,28 @@ export default function FileExplorer({ initialPath, onLogout }: { initialPath: s
             clipboard={clipboard}
             searchRef={searchRef}
           />
+          <div className="flex items-center gap-2 flex-wrap">
+            <FileFilter value={fileFilter} onChange={setFileFilter} />
+            {selectedFiles.size >= 2 && (
+              <button
+                onClick={() => setShowBatchRename(true)}
+                className="flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-600 transition"
+              >
+                Batch Rename
+              </button>
+            )}
+            {selectedFiles.size === 1 && (
+              <button
+                onClick={() => setShowInfoPanel((v) => !v)}
+                className={`p-1.5 rounded-lg transition ${showInfoPanel ? 'bg-blue-100 dark:bg-blue-900/40 text-blue-600' : 'text-gray-500 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700'}`}
+                title="File info (i)"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+              </button>
+            )}
+          </div>
           <div className="flex items-center gap-1.5">
             <button
               onClick={goBack}
@@ -765,7 +826,7 @@ export default function FileExplorer({ initialPath, onLogout }: { initialPath: s
                 </tr>
               </thead>
               <tbody>
-                {sortedFiles.slice(0, visibleCount).map((file) => (
+                {filteredFiles.slice(0, visibleCount).map((file) => (
                   <tr
                     key={file.path}
                     className={`cursor-pointer group border-b border-gray-100 dark:border-gray-800 last:border-0 ${
@@ -879,7 +940,7 @@ export default function FileExplorer({ initialPath, onLogout }: { initialPath: s
             </table>
           ) : (
             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3">
-              {sortedFiles.map((file) => (
+              {filteredFiles.slice(0, visibleCount).map((file) => (
                 <div
                   key={file.path}
                   className={`flex flex-col items-center p-3 rounded-lg cursor-pointer group ${
@@ -965,18 +1026,24 @@ export default function FileExplorer({ initialPath, onLogout }: { initialPath: s
               </div>
             )}
           </div>
-          {sortedFiles.length > visibleCount && (
+          {filteredFiles.length > visibleCount && (
             <div className="text-center py-4">
               <button
                 onClick={() => setVisibleCount((c) => c + 100)}
                 className="px-4 py-2 text-sm text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/30 rounded-lg transition"
               >
-                Load more ({sortedFiles.length - visibleCount} remaining)
+                Load more ({filteredFiles.length - visibleCount} remaining)
               </button>
             </div>
           )}
           </div>
         </UploadZone>
+
+        {/* File info panel */}
+        {showInfoPanel && selectedFiles.size === 1 && (() => {
+          const file = files.find((f) => f.path === Array.from(selectedFiles)[0])
+          return file ? <FileInfoPanel file={file} onClose={() => setShowInfoPanel(false)} /> : null
+        })()}
       </div>
 
       {/* Context menu */}
@@ -1059,6 +1126,26 @@ export default function FileExplorer({ initialPath, onLogout }: { initialPath: s
 
       {showRecent && (
         <RecentFiles onClose={() => setShowRecent(false)} onNavigate={navigate} />
+      )}
+
+      {showKeyboardHelp && (
+        <KeyboardHelp onClose={() => setShowKeyboardHelp(false)} />
+      )}
+
+      {showBatchRename && (
+        <BatchRename
+          files={getSelectedFileObjects().map((f) => ({ name: f.name, path: f.path }))}
+          onRename={async (renames) => {
+            for (const r of renames) {
+              try { await renameFile(r.oldPath, r.newName) } catch {}
+            }
+            toast.success(`Renamed ${renames.length} files`)
+            setSelectedFiles(new Set())
+            refresh()
+            window.dispatchEvent(new Event('sidebar-refresh'))
+          }}
+          onClose={() => setShowBatchRename(false)}
+        />
       )}
 
       <UpdateToast />
