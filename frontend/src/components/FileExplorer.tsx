@@ -87,7 +87,7 @@ export default function FileExplorer({ initialPath, onLogout }: { initialPath: s
   const [showTrash, setShowTrash] = useState(false)
   const [showRecent, setShowRecent] = useState(false)
   const [clipboard, setClipboard] = useState<Clipboard | null>(null)
-  const [diskUsage, setDiskUsage] = useState<{ totalSize: number } | null>(null)
+  const [diskUsage, setDiskUsage] = useState<{ totalSize: number; totalSpace: number; freeSpace: number; perUser?: { username: string; size: number }[] } | null>(null)
   const searchRef = useRef<HTMLInputElement>(null)
   const [sortBy, setSortBy] = useState<'name' | 'size' | 'createdAt' | 'modTime'>(() => (localStorage.getItem('clouddrive_sortBy') as any) || 'name')
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>(() => (localStorage.getItem('clouddrive_sortDir') as any) || 'asc')
