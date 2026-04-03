@@ -152,6 +152,21 @@ function SidebarItemWrapper({
     }
   }, [currentPath])
 
+  // Listen for expand-all / collapse-all
+  useEffect(() => {
+    const handleExpand = () => {
+      setExpanded(true)
+      loadChildren()
+    }
+    const handleCollapse = () => setExpanded(false)
+    window.addEventListener('sidebar-expand-all', handleExpand)
+    window.addEventListener('sidebar-collapse-all', handleCollapse)
+    return () => {
+      window.removeEventListener('sidebar-expand-all', handleExpand)
+      window.removeEventListener('sidebar-collapse-all', handleCollapse)
+    }
+  }, [])
+
   const loadChildren = useCallback(async () => {
     if (localNode.children !== null) return
     setLocalNode((prev) => ({ ...prev, loading: true }))
@@ -261,15 +276,35 @@ export default function Sidebar({ currentPath, homeFolder, onNavigate, onContext
       {/* Sidebar header */}
       <div className="flex items-center justify-between px-3 py-2 border-b border-gray-100">
         <span className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Folders</span>
-        <button
-          onClick={() => setCollapsed(true)}
-          className="p-1 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-md transition"
-          title="Collapse sidebar"
-        >
-          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-          </svg>
-        </button>
+        <div className="flex items-center gap-0.5">
+          <button
+            onClick={() => window.dispatchEvent(new CustomEvent('sidebar-expand-all'))}
+            className="p-1 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-md transition"
+            title="Expand all"
+          >
+            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+            </svg>
+          </button>
+          <button
+            onClick={() => window.dispatchEvent(new CustomEvent('sidebar-collapse-all'))}
+            className="p-1 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-md transition"
+            title="Collapse all"
+          >
+            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" />
+            </svg>
+          </button>
+          <button
+            onClick={() => setCollapsed(true)}
+            className="p-1 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-md transition"
+            title="Hide sidebar"
+          >
+            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+            </svg>
+          </button>
+        </div>
       </div>
 
       {/* Content */}

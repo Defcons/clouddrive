@@ -1,4 +1,4 @@
-export const APP_VERSION = '0.0.9'
+export const APP_VERSION = '0.0.10'
 
 export interface ChangelogEntry {
   version: string
@@ -7,6 +7,15 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {
+    version: '0.0.10',
+    date: '2026-04-03',
+    changes: [
+      'Back/Up buttons now show text labels for better visibility',
+      'Fixed Modified column spacing — both Size and Modified columns hug the content',
+      'Expand All / Collapse All buttons in sidebar header',
+    ],
+  },
   {
     version: '0.0.9',
     date: '2026-04-03',
