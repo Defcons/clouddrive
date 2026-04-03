@@ -1,4 +1,4 @@
-export const APP_VERSION = '0.0.18'
+export const APP_VERSION = '0.0.19'
 
 export interface ChangelogEntry {
   version: string
@@ -7,6 +7,19 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {
+    version: '0.0.19',
+    date: '2026-04-03',
+    changes: [
+      'Share tokens persisted to disk — share links survive container restarts',
+      'CSRF protection on all state-changing endpoints (upload, delete, rename, mkdir, share, permissions, password change)',
+      'Secure HTTP headers — HSTS, CSP, X-Frame-Options, X-Content-Type-Options, Referrer-Policy, Permissions-Policy',
+      'Session invalidation on password change — old tokens rejected after changing password',
+      'Comprehensive audit logging — tracks logins, uploads, deletes, renames, mkdir, shares, permission changes, password changes',
+      'Admin-only audit log viewer — clipboard icon in header, filterable table with color-coded action badges',
+      'Header layout fix — full-width alignment matching sidebar and content',
+    ],
+  },
   {
     version: '0.0.18',
     date: '2026-04-03',

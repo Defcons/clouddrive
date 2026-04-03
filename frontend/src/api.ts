@@ -9,6 +9,29 @@ function authHeaders(): Record<string, string> {
   return token ? { Authorization: `Bearer ${token}` } : {}
 }
 
+let csrfToken: string | null = null
+
+async function ensureCSRF(): Promise<string> {
+  if (csrfToken) return csrfToken
+  const res = await fetch(`${API_BASE}/csrf`, { headers: authHeaders() })
+  if (res.ok) {
+    const data = await res.json()
+    csrfToken = data.csrfToken
+    return csrfToken!
+  }
+  return ''
+}
+
+async function writeHeaders(): Promise<Record<string, string>> {
+  const csrf = await ensureCSRF()
+  return { ...authHeaders(), 'Content-Type': 'application/json', 'X-CSRF-Token': csrf }
+}
+
+async function writeHeadersNoContent(): Promise<Record<string, string>> {
+  const csrf = await ensureCSRF()
+  return { ...authHeaders(), 'X-CSRF-Token': csrf }
+}
+
 export async function login(username: string, password: string) {
   const res = await fetch(`${API_BASE}/auth/login`, {
     method: 'POST',
@@ -41,6 +64,7 @@ export function logout() {
   localStorage.removeItem('username')
   localStorage.removeItem('role')
   localStorage.removeItem('homeFolder')
+  csrfToken = null
 }
 
 export function getCurrentUser() {
@@ -54,7 +78,7 @@ export function getCurrentUser() {
 export async function changePassword(currentPassword: string, newPassword: string) {
   const res = await fetch(`${API_BASE}/auth/change-password`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', ...authHeaders() },
+    headers: await writeHeaders(),
     body: JSON.stringify({ currentPassword, newPassword }),
   })
   if (!res.ok) {
@@ -94,11 +118,13 @@ export async function uploadFiles(path: string, files: File[], onProgress?: (pct
     formData.append('files', file)
   }
 
+  const csrf = await ensureCSRF()
   return new Promise<void>((resolve, reject) => {
     const xhr = new XMLHttpRequest()
     xhr.open('POST', `${API_BASE}/files/upload?path=${encodeURIComponent(path)}`)
     const token = getToken()
     if (token) xhr.setRequestHeader('Authorization', `Bearer ${token}`)
+    if (csrf) xhr.setRequestHeader('X-CSRF-Token', csrf)
 
     xhr.upload.onprogress = (e) => {
       if (e.lengthComputable && onProgress) {
@@ -114,7 +140,7 @@ export async function uploadFiles(path: string, files: File[], onProgress?: (pct
 export async function createFolder(path: string, name: string) {
   const res = await fetch(`${API_BASE}/files/mkdir`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', ...authHeaders() },
+    headers: await writeHeaders(),
     body: JSON.stringify({ path, name }),
   })
   if (!res.ok) throw new Error('Failed to create folder')
@@ -124,7 +150,7 @@ export async function createFolder(path: string, name: string) {
 export async function renameFile(oldPath: string, newName: string) {
   const res = await fetch(`${API_BASE}/files/rename`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', ...authHeaders() },
+    headers: await writeHeaders(),
     body: JSON.stringify({ oldPath, newName }),
   })
   if (!res.ok) throw new Error('Failed to rename')
@@ -134,7 +160,7 @@ export async function renameFile(oldPath: string, newName: string) {
 export async function deleteFile(path: string) {
   const res = await fetch(`${API_BASE}/files?path=${encodeURIComponent(path)}`, {
     method: 'DELETE',
-    headers: authHeaders(),
+    headers: await writeHeadersNoContent(),
   })
   if (!res.ok) throw new Error('Failed to delete')
   return res.json()
@@ -180,7 +206,7 @@ export async function fetchTextPreview(path: string): Promise<string> {
 export async function setFolderPrivate(path: string, allowedUsers?: string[]) {
   const res = await fetch(`${API_BASE}/files/permissions`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', ...authHeaders() },
+    headers: await writeHeaders(),
     body: JSON.stringify({ path, allowedUsers: allowedUsers || [] }),
   })
   if (!res.ok) throw new Error('Failed to set permissions')
@@ -190,7 +216,7 @@ export async function setFolderPrivate(path: string, allowedUsers?: string[]) {
 export async function removeFolderPrivate(path: string) {
   const res = await fetch(`${API_BASE}/files/permissions?path=${encodeURIComponent(path)}`, {
     method: 'DELETE',
-    headers: authHeaders(),
+    headers: await writeHeadersNoContent(),
   })
   if (!res.ok) throw new Error('Failed to remove permissions')
   return res.json()
@@ -199,7 +225,7 @@ export async function removeFolderPrivate(path: string) {
 export async function createShare(path: string, safe = false): Promise<{ token: string; url: string; password?: string }> {
   const res = await fetch(`${API_BASE}/shares`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', ...authHeaders() },
+    headers: await writeHeaders(),
     body: JSON.stringify({ path, safe }),
   })
   if (!res.ok) throw new Error('Failed to create share')
@@ -231,6 +257,14 @@ export function addQuickAccess(name: string, path: string) {
 export function removeQuickAccess(path: string) {
   const items = getQuickAccess().filter((i) => i.path !== path)
   localStorage.setItem(quickAccessKey(), JSON.stringify(items))
+}
+
+export async function getAuditLog(limit = 200): Promise<{ timestamp: string; action: string; username: string; ip: string; detail: string }[]> {
+  const res = await fetch(`${API_BASE}/audit?limit=${limit}`, {
+    headers: authHeaders(),
+  })
+  if (!res.ok) throw new Error('Failed to fetch audit log')
+  return res.json()
 }
 
 export async function getDiskUsage() {

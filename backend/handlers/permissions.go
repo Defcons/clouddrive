@@ -4,15 +4,17 @@ import (
 	"clouddrive/middleware"
 	"clouddrive/services"
 	"encoding/json"
+	"fmt"
 	"net/http"
 )
 
 type PermissionsHandler struct {
 	permStore *services.PermissionStore
+	audit     *services.AuditLogger
 }
 
-func NewPermissionsHandler(permStore *services.PermissionStore) *PermissionsHandler {
-	return &PermissionsHandler{permStore: permStore}
+func NewPermissionsHandler(permStore *services.PermissionStore, audit *services.AuditLogger) *PermissionsHandler {
+	return &PermissionsHandler{permStore: permStore, audit: audit}
 }
 
 // SetPrivate marks a folder as private
@@ -36,6 +38,10 @@ func (h *PermissionsHandler) SetPrivate(w http.ResponseWriter, r *http.Request) 
 	if err := h.permStore.SetPrivate(req.Path, username, req.AllowedUsers); err != nil {
 		http.Error(w, "Failed to set permissions", http.StatusInternalServerError)
 		return
+	}
+
+	if h.audit != nil {
+		h.audit.Log("PRIVATE", middleware.GetUsername(r), getClientIP(r), fmt.Sprintf("made %s private", req.Path))
 	}
 
 	w.Header().Set("Content-Type", "application/json")
@@ -63,6 +69,10 @@ func (h *PermissionsHandler) RemovePrivate(w http.ResponseWriter, r *http.Reques
 	if err := h.permStore.RemovePrivate(path); err != nil {
 		http.Error(w, "Failed to remove permissions", http.StatusInternalServerError)
 		return
+	}
+
+	if h.audit != nil {
+		h.audit.Log("PUBLIC", middleware.GetUsername(r), getClientIP(r), fmt.Sprintf("made %s public", path))
 	}
 
 	w.Header().Set("Content-Type", "application/json")

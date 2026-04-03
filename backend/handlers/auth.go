@@ -17,13 +17,15 @@ type AuthHandler struct {
 	userStore   *services.UserStore
 	jwtSecret   []byte
 	rateLimiter RateLimitResetter
+	audit       *services.AuditLogger
 }
 
-func NewAuthHandler(userStore *services.UserStore, jwtSecret string, rateLimiter RateLimitResetter) *AuthHandler {
+func NewAuthHandler(userStore *services.UserStore, jwtSecret string, rateLimiter RateLimitResetter, audit *services.AuditLogger) *AuthHandler {
 	return &AuthHandler{
 		userStore:   userStore,
 		jwtSecret:   []byte(jwtSecret),
 		rateLimiter: rateLimiter,
+		audit:       audit,
 	}
 }
 
@@ -37,16 +39,29 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	ip := r.Header.Get("X-Forwarded-For")
+	if ip == "" {
+		ip = r.RemoteAddr
+	}
+
 	user, err := h.userStore.Authenticate(req.Username, req.Password)
 	if err != nil {
+		if h.audit != nil {
+			h.audit.Log("LOGIN_FAIL", req.Username, ip, "invalid credentials")
+		}
 		http.Error(w, "Invalid credentials", http.StatusUnauthorized)
 		return
+	}
+
+	if h.audit != nil {
+		h.audit.Log("LOGIN_OK", user.Username, ip, "")
 	}
 
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
 		"sub":        user.Username,
 		"role":       user.Role,
 		"homeFolder": user.HomeFolder,
+		"pwv":        user.PwVersion,
 		"exp":        time.Now().Add(7 * 24 * time.Hour).Unix(),
 		"iat":        time.Now().Unix(),
 	})
@@ -96,6 +111,14 @@ func (h *AuthHandler) ChangePassword(w http.ResponseWriter, r *http.Request) {
 	if err := h.userStore.ChangePassword(username, req.CurrentPassword, req.NewPassword); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
+	}
+
+	if h.audit != nil {
+		auditIP := r.Header.Get("X-Forwarded-For")
+		if auditIP == "" {
+			auditIP = r.RemoteAddr
+		}
+		h.audit.Log("PW_CHANGE", username, auditIP, "password changed")
 	}
 
 	w.Header().Set("Content-Type", "application/json")

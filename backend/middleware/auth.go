@@ -8,12 +8,17 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 )
 
-type AuthMiddleware struct {
-	jwtSecret []byte
+type PwVersionChecker interface {
+	GetPwVersion(username string) int
 }
 
-func NewAuthMiddleware(jwtSecret string) *AuthMiddleware {
-	return &AuthMiddleware{jwtSecret: []byte(jwtSecret)}
+type AuthMiddleware struct {
+	jwtSecret  []byte
+	pwChecker  PwVersionChecker
+}
+
+func NewAuthMiddleware(jwtSecret string, pwChecker PwVersionChecker) *AuthMiddleware {
+	return &AuthMiddleware{jwtSecret: []byte(jwtSecret), pwChecker: pwChecker}
 }
 
 func (m *AuthMiddleware) Wrap(next http.HandlerFunc) http.HandlerFunc {
@@ -51,7 +56,9 @@ func (m *AuthMiddleware) Wrap(next http.HandlerFunc) http.HandlerFunc {
 		// Extract claims and add to context
 		if claims, ok := token.Claims.(jwt.MapClaims); ok {
 			ctx := r.Context()
+			username := ""
 			if sub, ok := claims["sub"].(string); ok {
+				username = sub
 				ctx = context.WithValue(ctx, "username", sub)
 			}
 			if role, ok := claims["role"].(string); ok {
@@ -60,6 +67,20 @@ func (m *AuthMiddleware) Wrap(next http.HandlerFunc) http.HandlerFunc {
 			if homeFolder, ok := claims["homeFolder"].(string); ok {
 				ctx = context.WithValue(ctx, "homeFolder", homeFolder)
 			}
+
+			// Check password version — reject tokens issued before a password change
+			if m.pwChecker != nil && username != "" {
+				tokenPwv := 0
+				if pwv, ok := claims["pwv"].(float64); ok {
+					tokenPwv = int(pwv)
+				}
+				currentPwv := m.pwChecker.GetPwVersion(username)
+				if tokenPwv < currentPwv {
+					http.Error(w, "Session expired — please login again", http.StatusUnauthorized)
+					return
+				}
+			}
+
 			r = r.WithContext(ctx)
 		}
 
