@@ -1,4 +1,4 @@
-export const APP_VERSION = '0.0.17'
+export const APP_VERSION = '0.0.18'
 
 export interface ChangelogEntry {
   version: string
@@ -7,6 +7,16 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {
+    version: '0.0.18',
+    date: '2026-04-03',
+    changes: [
+      'Login rate limiting — 5 attempts per 2 minutes, 5 minute lockout after exceeding',
+      'Rate limiter uses X-Forwarded-For/X-Real-IP headers for accurate IP detection behind nginx',
+      'Successful login resets the rate limit counter',
+      'Auto-cleanup of stale rate limit entries every 10 minutes',
+    ],
+  },
   {
     version: '0.0.17',
     date: '2026-04-03',

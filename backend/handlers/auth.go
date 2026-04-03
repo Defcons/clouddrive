@@ -9,15 +9,21 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 )
 
-type AuthHandler struct {
-	userStore *services.UserStore
-	jwtSecret []byte
+type RateLimitResetter interface {
+	Reset(r *http.Request)
 }
 
-func NewAuthHandler(userStore *services.UserStore, jwtSecret string) *AuthHandler {
+type AuthHandler struct {
+	userStore   *services.UserStore
+	jwtSecret   []byte
+	rateLimiter RateLimitResetter
+}
+
+func NewAuthHandler(userStore *services.UserStore, jwtSecret string, rateLimiter RateLimitResetter) *AuthHandler {
 	return &AuthHandler{
-		userStore: userStore,
-		jwtSecret: []byte(jwtSecret),
+		userStore:   userStore,
+		jwtSecret:   []byte(jwtSecret),
+		rateLimiter: rateLimiter,
 	}
 }
 
@@ -49,6 +55,11 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		http.Error(w, "Failed to create token", http.StatusInternalServerError)
 		return
+	}
+
+	// Clear rate limit on successful login
+	if h.rateLimiter != nil {
+		h.rateLimiter.Reset(r)
 	}
 
 	w.Header().Set("Content-Type", "application/json")
