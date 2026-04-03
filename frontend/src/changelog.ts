@@ -1,4 +1,4 @@
-export const APP_VERSION = '0.0.4'
+export const APP_VERSION = '0.0.5'
 
 export interface ChangelogEntry {
   version: string
@@ -7,6 +7,13 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {
+    version: '0.0.5',
+    date: '2026-04-03',
+    changes: [
+      'Fix auto-deploy — ensure correct file ownership for deploy user',
+    ],
+  },
   {
     version: '0.0.4',
     date: '2026-04-03',
