@@ -1,4 +1,4 @@
-export const APP_VERSION = '0.0.3'
+export const APP_VERSION = '0.0.4'
 
 export interface ChangelogEntry {
   version: string
@@ -7,6 +7,13 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {
+    version: '0.0.4',
+    date: '2026-04-03',
+    changes: [
+      'Fix login — rename USERNAME/PASSWORD env vars to CLOUDDRIVE_USER/CLOUDDRIVE_PASS to avoid system variable conflicts',
+    ],
+  },
   {
     version: '0.0.3',
     date: '2026-04-03',
