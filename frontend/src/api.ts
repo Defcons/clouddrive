@@ -15,6 +15,7 @@ export async function login(username: string, password: string) {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ username, password }),
   })
+  if (res.status === 429) throw new Error('Too many login attempts. Try again later.')
   if (!res.ok) throw new Error('Invalid credentials')
   const data = await res.json()
   localStorage.setItem('token', data.token)

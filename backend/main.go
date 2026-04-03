@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"time"
 
 	"github.com/rs/cors"
 )
@@ -71,7 +72,10 @@ func main() {
 
 	permStore := services.NewPermissionStore(storageRoot)
 
-	authHandler := handlers.NewAuthHandler(userStore, jwtSecret)
+	// Rate limiter: 5 attempts per 2 minutes, 5 minute lockout
+	loginLimiter := middleware.NewRateLimiter(5, 2*time.Minute, 5*time.Minute)
+
+	authHandler := handlers.NewAuthHandler(userStore, jwtSecret, loginLimiter)
 	authMiddleware := middleware.NewAuthMiddleware(jwtSecret)
 	fileHandler := handlers.NewFileHandler(storageRoot, permStore)
 	diskHandler := handlers.NewDiskHandler(storageRoot)
@@ -82,7 +86,7 @@ func main() {
 	mux := http.NewServeMux()
 
 	// Auth
-	mux.HandleFunc("POST /api/auth/login", authHandler.Login)
+	mux.HandleFunc("POST /api/auth/login", loginLimiter.WrapLogin(authHandler.Login))
 	mux.HandleFunc("GET /api/auth/check", authMiddleware.Wrap(authHandler.Check))
 	mux.HandleFunc("POST /api/auth/change-password", authMiddleware.Wrap(authHandler.ChangePassword))
 
