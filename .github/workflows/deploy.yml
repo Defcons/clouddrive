@@ -23,4 +23,4 @@ jobs:
             cd /opt/clouddrive
             git fetch origin
             git reset --hard origin/master
-            docker compose up --build -d
+            docker compose up --build --force-recreate -d
