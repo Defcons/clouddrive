@@ -27,6 +27,7 @@ import KeyboardHelp from './KeyboardHelp'
 import FileInfoPanel from './FileInfoPanel'
 import FileFilter, { getFilterExtensions } from './FileFilter'
 import BatchRename from './BatchRename'
+import SharesManager from './SharesManager'
 
 function formatSize(bytes: number): string {
   if (bytes === 0) return '—'
@@ -95,6 +96,7 @@ export default function FileExplorer({ initialPath, onLogout }: { initialPath: s
   const [showInfoPanel, setShowInfoPanel] = useState(false)
   const [fileFilter, setFileFilter] = useState('')
   const [showBatchRename, setShowBatchRename] = useState(false)
+  const [showSharesManager, setShowSharesManager] = useState(false)
   const [diskUsage, setDiskUsage] = useState<{ totalSize: number; totalSpace: number; freeSpace: number; perUser?: { username: string; size: number }[] } | null>(null)
   const searchRef = useRef<HTMLInputElement>(null)
   const [sortBy, setSortBy] = useState<'name' | 'size' | 'createdAt' | 'modTime'>(() => (localStorage.getItem('clouddrive_sortBy') as any) || 'name')
@@ -652,6 +654,15 @@ export default function FileExplorer({ initialPath, onLogout }: { initialPath: s
                 )}
               </button>
               <NotificationBell onNavigate={navigate} />
+              <button
+                onClick={() => setShowSharesManager(true)}
+                className="p-1 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-md transition"
+                title="Active Shares"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                </svg>
+              </button>
               {user.role === 'admin' && (
                 <button
                   onClick={() => setShowAuditLog(true)}
@@ -1126,6 +1137,10 @@ export default function FileExplorer({ initialPath, onLogout }: { initialPath: s
 
       {showRecent && (
         <RecentFiles onClose={() => setShowRecent(false)} onNavigate={navigate} />
+      )}
+
+      {showSharesManager && (
+        <SharesManager onClose={() => setShowSharesManager(false)} />
       )}
 
       {showKeyboardHelp && (

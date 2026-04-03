@@ -1,4 +1,4 @@
-export const APP_VERSION = '0.0.27'
+export const APP_VERSION = '0.0.28'
 
 export interface ChangelogEntry {
   version: string
@@ -7,6 +7,20 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {
+    version: '0.0.28',
+    date: '2026-04-03',
+    changes: [
+      'Shared folders are now browseable — recipients see a file listing and can navigate subdirectories',
+      'Download individual files from shared folders, or "Download All (ZIP)" for everything',
+      'Collaborative share mode — share a folder where anyone with the link can upload AND download',
+      'Drag & drop upload support on collaborative share pages',
+      'Configurable share expiry — choose 1 hour, 1 day, 7 days, 30 days, or 1 year',
+      'Download tracking — shares now count how many times they have been accessed',
+      'Active Shares Manager — link icon in header shows all active shares with download counts and revoke option',
+      'Share creator identity tracked in share metadata',
+    ],
+  },
   {
     version: '0.0.27',
     date: '2026-04-03',
