@@ -13,6 +13,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"syscall"
 )
 
 type FileHandler struct {
@@ -25,9 +26,23 @@ type FileInfo struct {
 	Path      string `json:"path"`
 	IsDir     bool   `json:"isDir"`
 	Size      int64  `json:"size"`
+	CreatedAt int64  `json:"createdAt"`
 	ModTime   int64  `json:"modTime"`
 	ItemCount *int   `json:"itemCount,omitempty"`
 	IsPrivate bool   `json:"isPrivate,omitempty"`
+}
+
+// getCreationTime tries to get the file creation/change time, falls back to ModTime
+func getCreationTime(info os.FileInfo) int64 {
+	if stat, ok := info.Sys().(*syscall.Stat_t); ok {
+		// Ctim is the status change time on Linux (closest to creation time available)
+		ctim := stat.Ctim
+		ms := ctim.Sec*1000 + ctim.Nsec/1000000
+		if ms > 0 {
+			return ms
+		}
+	}
+	return info.ModTime().UnixMilli()
 }
 
 func NewFileHandler(root string, permStore ...*services.PermissionStore) *FileHandler {
@@ -134,11 +149,12 @@ func (h *FileHandler) List(w http.ResponseWriter, r *http.Request) {
 		}
 
 		fi := FileInfo{
-			Name:    entry.Name(),
-			Path:    entryPath,
-			IsDir:   entry.IsDir(),
-			Size:    info.Size(),
-			ModTime: info.ModTime().UnixMilli(),
+			Name:      entry.Name(),
+			Path:      entryPath,
+			IsDir:     entry.IsDir(),
+			Size:      info.Size(),
+			CreatedAt: getCreationTime(info),
+			ModTime:   info.ModTime().UnixMilli(),
 		}
 		if entry.IsDir() {
 			childEntries, err := os.ReadDir(filepath.Join(absPath, entry.Name()))

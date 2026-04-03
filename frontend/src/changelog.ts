@@ -1,4 +1,4 @@
-export const APP_VERSION = '0.0.10'
+export const APP_VERSION = '0.0.11'
 
 export interface ChangelogEntry {
   version: string
@@ -7,6 +7,14 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {
+    version: '0.0.11',
+    date: '2026-04-03',
+    changes: [
+      'Added Created column — shows file/folder creation time alongside Modified',
+      'Fixed table layout — 4 columns (Name, Size, Created, Modified) with fixed widths that prevent text wrapping',
+    ],
+  },
   {
     version: '0.0.10',
     date: '2026-04-03',
