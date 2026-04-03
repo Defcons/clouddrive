@@ -1,4 +1,4 @@
-export const APP_VERSION = '0.0.14'
+export const APP_VERSION = '0.0.15'
 
 export interface ChangelogEntry {
   version: string
@@ -7,6 +7,14 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {
+    version: '0.0.15',
+    date: '2026-04-03',
+    changes: [
+      'Escape key now works as a universal cancel — closes modals, context menus, clears selection, cancels rename',
+      'Cascading priority: modals first, then context menu, then rename, then selection',
+    ],
+  },
   {
     version: '0.0.14',
     date: '2026-04-03',
