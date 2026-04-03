@@ -259,6 +259,142 @@ export function removeQuickAccess(path: string) {
   localStorage.setItem(quickAccessKey(), JSON.stringify(items))
 }
 
+// Search
+export async function searchFiles(query: string): Promise<any[]> {
+  const res = await fetch(`${API_BASE}/files/search?q=${encodeURIComponent(query)}`, {
+    headers: authHeaders(),
+  })
+  if (!res.ok) throw new Error('Search failed')
+  return res.json()
+}
+
+// Move / Copy
+export async function moveFiles(paths: string[], destination: string) {
+  const res = await fetch(`${API_BASE}/files/move`, {
+    method: 'POST',
+    headers: await writeHeaders(),
+    body: JSON.stringify({ paths, destination }),
+  })
+  if (!res.ok) throw new Error('Move failed')
+  return res.json()
+}
+
+export async function copyFiles(paths: string[], destination: string) {
+  const res = await fetch(`${API_BASE}/files/copy`, {
+    method: 'POST',
+    headers: await writeHeaders(),
+    body: JSON.stringify({ paths, destination }),
+  })
+  if (!res.ok) throw new Error('Copy failed')
+  return res.json()
+}
+
+// Recent files
+export async function getRecentFiles(): Promise<any[]> {
+  const res = await fetch(`${API_BASE}/files/recent`, {
+    headers: authHeaders(),
+  })
+  if (!res.ok) throw new Error('Failed to get recent files')
+  return res.json()
+}
+
+// Trash
+export async function listTrash(): Promise<any[]> {
+  const res = await fetch(`${API_BASE}/trash`, {
+    headers: authHeaders(),
+  })
+  if (!res.ok) throw new Error('Failed to list trash')
+  return res.json()
+}
+
+export async function restoreFromTrash(id: string) {
+  const res = await fetch(`${API_BASE}/trash/restore`, {
+    method: 'POST',
+    headers: await writeHeaders(),
+    body: JSON.stringify({ id }),
+  })
+  if (!res.ok) throw new Error('Failed to restore')
+  return res.json()
+}
+
+export async function deleteFromTrash(id: string) {
+  const res = await fetch(`${API_BASE}/trash?id=${encodeURIComponent(id)}`, {
+    method: 'DELETE',
+    headers: await writeHeadersNoContent(),
+  })
+  if (!res.ok) throw new Error('Failed to delete permanently')
+  return res.json()
+}
+
+export async function emptyTrash() {
+  const res = await fetch(`${API_BASE}/trash/empty`, {
+    method: 'DELETE',
+    headers: await writeHeadersNoContent(),
+  })
+  if (!res.ok) throw new Error('Failed to empty trash')
+  return res.json()
+}
+
+// Extract / Compress
+export async function extractZip(path: string) {
+  const res = await fetch(`${API_BASE}/files/extract`, {
+    method: 'POST',
+    headers: await writeHeaders(),
+    body: JSON.stringify({ path }),
+  })
+  if (!res.ok) throw new Error('Failed to extract')
+  return res.json()
+}
+
+export async function compressFiles(paths: string[], name: string) {
+  const res = await fetch(`${API_BASE}/files/compress`, {
+    method: 'POST',
+    headers: await writeHeaders(),
+    body: JSON.stringify({ paths, name }),
+  })
+  if (!res.ok) throw new Error('Failed to compress')
+  return res.json()
+}
+
+// Tags
+export async function setFileTags(path: string, tags: string[]) {
+  const res = await fetch(`${API_BASE}/files/tags`, {
+    method: 'POST',
+    headers: await writeHeaders(),
+    body: JSON.stringify({ path, tags }),
+  })
+  if (!res.ok) throw new Error('Failed to set tags')
+  return res.json()
+}
+
+// Notifications
+export async function getNotifications(): Promise<any[]> {
+  const res = await fetch(`${API_BASE}/notifications`, {
+    headers: authHeaders(),
+  })
+  if (!res.ok) return []
+  return res.json()
+}
+
+export async function getUnreadCount(): Promise<number> {
+  const res = await fetch(`${API_BASE}/notifications/unread`, {
+    headers: authHeaders(),
+  })
+  if (!res.ok) return 0
+  const data = await res.json()
+  return data.count
+}
+
+export async function markNotificationsRead(ids?: string[]) {
+  const res = await fetch(`${API_BASE}/notifications/read`, {
+    method: 'POST',
+    headers: await writeHeaders(),
+    body: JSON.stringify(ids ? { ids } : { all: true }),
+  })
+  if (!res.ok) throw new Error('Failed to mark read')
+  return res.json()
+}
+
 export async function getAuditLog(limit = 200): Promise<{ timestamp: string; action: string; username: string; ip: string; detail: string }[]> {
   const res = await fetch(`${API_BASE}/audit?limit=${limit}`, {
     headers: authHeaders(),

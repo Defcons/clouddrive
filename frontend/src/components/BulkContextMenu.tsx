@@ -5,11 +5,14 @@ interface Props {
   y: number
   count: number
   onDownload: () => void
+  onCut: () => void
+  onCopy: () => void
+  onCompress: () => void
   onDelete: () => void
   onClose: () => void
 }
 
-export default function BulkContextMenu({ x, y, count, onDownload, onDelete, onClose }: Props) {
+export default function BulkContextMenu({ x, y, count, onDownload, onCut, onCopy, onCompress, onDelete, onClose }: Props) {
   const ref = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -43,7 +46,34 @@ export default function BulkContextMenu({ x, y, count, onDownload, onDelete, onC
         </svg>
         Download All
       </button>
-      <hr className="my-1 border-gray-100" />
+      <button
+        onClick={onCut}
+        className="w-full text-left px-3 py-2 text-sm hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center gap-2"
+      >
+        <svg className="w-4 h-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14.121 14.121L19 19m-7-7l7-7m-7 7l-2.879 2.879M12 12L9.121 9.121m0 5.758a3 3 0 10-4.243 4.243 3 3 0 004.243-4.243zm0-5.758a3 3 0 10-4.243-4.243 3 3 0 004.243 4.243z" />
+        </svg>
+        Cut
+      </button>
+      <button
+        onClick={onCopy}
+        className="w-full text-left px-3 py-2 text-sm hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center gap-2"
+      >
+        <svg className="w-4 h-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+        </svg>
+        Copy
+      </button>
+      <button
+        onClick={onCompress}
+        className="w-full text-left px-3 py-2 text-sm hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center gap-2"
+      >
+        <svg className="w-4 h-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
+        </svg>
+        Compress to Zip
+      </button>
+      <hr className="my-1 border-gray-100 dark:border-gray-700" />
       <button
         onClick={onDelete}
         className="w-full text-left px-3 py-2 text-sm hover:bg-red-50 text-red-600 flex items-center gap-2"

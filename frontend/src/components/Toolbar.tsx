@@ -1,5 +1,6 @@
-import { useRef } from 'react'
-import type { ViewMode } from '../types'
+import { useRef, useState } from 'react'
+import type { ViewMode, Clipboard } from '../types'
+import SearchResults from './SearchResults'
 
 interface Props {
   viewMode: ViewMode
@@ -8,10 +9,17 @@ interface Props {
   onNewFolder: () => void
   onRefresh: () => void
   onLogout: () => void
+  onPaste: () => void
+  onNavigate: (path: string) => void
+  onShowRecent: () => void
+  clipboard: Clipboard | null
+  searchRef?: React.RefObject<HTMLInputElement | null>
 }
 
-export default function Toolbar({ viewMode, onViewModeChange, onUpload, onNewFolder, onRefresh, onLogout }: Props) {
+export default function Toolbar({ viewMode, onViewModeChange, onUpload, onNewFolder, onRefresh, onLogout, onPaste, onNavigate, onShowRecent, clipboard, searchRef }: Props) {
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const [searchQuery, setSearchQuery] = useState('')
+  const [searchOpen, setSearchOpen] = useState(false)
 
   return (
     <div className="flex items-center gap-2 flex-wrap">
@@ -42,15 +50,60 @@ export default function Toolbar({ viewMode, onViewModeChange, onUpload, onNewFol
         New Folder
       </button>
 
+      {clipboard && (
+        <button
+          onClick={onPaste}
+          className="flex items-center gap-1.5 px-3 py-1.5 bg-green-600 text-white rounded-lg text-sm font-medium hover:bg-green-700 transition"
+        >
+          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+          </svg>
+          Paste ({clipboard.paths.length} {clipboard.mode === 'cut' ? 'cut' : 'copied'})
+        </button>
+      )}
+
       <button
         onClick={onRefresh}
-        className="p-1.5 text-gray-500 hover:text-gray-700 hover:bg-gray-200 rounded-lg transition"
+        className="p-1.5 text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-lg transition"
         title="Refresh"
       >
         <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
         </svg>
       </button>
+
+      <button
+        onClick={onShowRecent}
+        className="p-1.5 text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-lg transition"
+        title="Recent files"
+      >
+        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+        </svg>
+      </button>
+
+      {/* Search */}
+      <div className="relative flex-1 max-w-xs">
+        <input
+          ref={searchRef}
+          type="text"
+          placeholder="Search files..."
+          value={searchQuery}
+          onChange={(e) => { setSearchQuery(e.target.value); setSearchOpen(true) }}
+          onFocus={() => setSearchOpen(true)}
+          className="w-full pl-8 pr-3 py-1.5 text-sm bg-gray-100 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-gray-800 dark:text-gray-200 placeholder-gray-400"
+        />
+        <svg className="w-4 h-4 text-gray-400 absolute left-2.5 top-1/2 -translate-y-1/2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+        </svg>
+        {searchOpen && searchQuery.length >= 2 && (
+          <SearchResults
+            query={searchQuery}
+            onNavigate={(p) => { onNavigate(p); setSearchQuery(''); setSearchOpen(false) }}
+            onClose={() => setSearchOpen(false)}
+          />
+        )}
+      </div>
 
       <div className="ml-auto flex items-center gap-2">
         <div className="flex bg-gray-200 dark:bg-gray-700 rounded-lg p-0.5">
@@ -76,7 +129,7 @@ export default function Toolbar({ viewMode, onViewModeChange, onUpload, onNewFol
 
         <button
           onClick={onLogout}
-          className="px-3 py-1.5 text-gray-500 hover:text-gray-700 text-sm hover:bg-gray-200 rounded-lg transition"
+          className="px-3 py-1.5 text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300 text-sm hover:bg-gray-200 dark:hover:bg-gray-700 rounded-lg transition"
         >
           Logout
         </button>
