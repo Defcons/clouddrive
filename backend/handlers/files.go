@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"archive/zip"
 	"clouddrive/middleware"
 	"clouddrive/services"
 	"encoding/json"
@@ -188,8 +189,45 @@ func (h *FileHandler) Download(w http.ResponseWriter, r *http.Request) {
 	}
 
 	info, err := os.Stat(absPath)
-	if err != nil || info.IsDir() {
+	if err != nil {
 		http.Error(w, "File not found", http.StatusNotFound)
+		return
+	}
+
+	if info.IsDir() {
+		// Zip the directory and stream it
+		w.Header().Set("Content-Type", "application/zip")
+		w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="%s.zip"`, info.Name()))
+
+		zw := zip.NewWriter(w)
+		defer zw.Close()
+
+		filepath.Walk(absPath, func(fpath string, finfo os.FileInfo, ferr error) error {
+			if ferr != nil || finfo.IsDir() {
+				return nil
+			}
+			relPath, err := filepath.Rel(absPath, fpath)
+			if err != nil {
+				return nil
+			}
+			header, err := zip.FileInfoHeader(finfo)
+			if err != nil {
+				return nil
+			}
+			header.Name = filepath.ToSlash(filepath.Join(info.Name(), relPath))
+			header.Method = zip.Deflate
+			writer, err := zw.CreateHeader(header)
+			if err != nil {
+				return nil
+			}
+			file, err := os.Open(fpath)
+			if err != nil {
+				return nil
+			}
+			defer file.Close()
+			io.Copy(writer, file)
+			return nil
+		})
 		return
 	}
 

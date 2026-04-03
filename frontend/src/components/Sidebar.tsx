@@ -208,6 +208,13 @@ export default function Sidebar({ currentPath, homeFolder, onNavigate, onContext
   }, [])
 
   const rootPath = homeFolder || '/'
+  const [refreshKey, setRefreshKey] = useState(0)
+
+  useEffect(() => {
+    const handler = () => setRefreshKey((k) => k + 1)
+    window.addEventListener('sidebar-refresh', handler)
+    return () => window.removeEventListener('sidebar-refresh', handler)
+  }, [])
 
   useEffect(() => {
     setLoading(true)
@@ -225,7 +232,7 @@ export default function Sidebar({ currentPath, homeFolder, onNavigate, onContext
       })
       .catch(() => {})
       .finally(() => setLoading(false))
-  }, [rootPath])
+  }, [rootPath, refreshKey])
 
   const handleRemoveQuickAccess = (e: React.MouseEvent, path: string) => {
     e.stopPropagation()

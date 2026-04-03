@@ -34,6 +34,7 @@ function formatDate(ms: number): string {
 
 export default function FileExplorer({ initialPath, onLogout }: { initialPath: string; onLogout: () => void }) {
   const [path, setPath] = useState(initialPath || '/')
+  const [history, setHistory] = useState<string[]>([])
   const [files, setFiles] = useState<FileItemType[]>([])
   const [viewMode, setViewMode] = useState<ViewMode>('list')
   const [loading, setLoading] = useState(true)
@@ -67,9 +68,41 @@ export default function FileExplorer({ initialPath, onLogout }: { initialPath: s
   }, [refresh])
 
   const navigate = (newPath: string) => {
+    if (newPath !== path) {
+      setHistory((prev) => [...prev, path])
+    }
     setPath(newPath)
     setContextMenu(null)
   }
+
+  const goBack = () => {
+    if (history.length === 0) return
+    const prev = history[history.length - 1]
+    setHistory((h) => h.slice(0, -1))
+    setPath(prev)
+    setContextMenu(null)
+  }
+
+  const goUp = () => {
+    const homeFolder = user.homeFolder || '/'
+    if (path === homeFolder || path === '/') return
+    const parent = path.split('/').slice(0, -1).join('/') || '/'
+    // Don't go above home folder
+    if (homeFolder !== '/' && !parent.startsWith(homeFolder) && parent !== homeFolder) return
+    navigate(parent)
+  }
+
+  // Handle mouse back button
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (e.button === 3) { // mouse back button
+        e.preventDefault()
+        goBack()
+      }
+    }
+    window.addEventListener('mouseup', handler)
+    return () => window.removeEventListener('mouseup', handler)
+  }, [history, path])
 
   const handleUpload = async (fileList: FileList) => {
     setUploadProgress(0)
@@ -89,6 +122,7 @@ export default function FileExplorer({ initialPath, onLogout }: { initialPath: s
     try {
       await createFolder(path, name)
       await refresh()
+      window.dispatchEvent(new Event('sidebar-refresh'))
     } catch {
       setError('Failed to create folder')
     }
@@ -117,6 +151,7 @@ export default function FileExplorer({ initialPath, onLogout }: { initialPath: s
     try {
       await renameFile(file.path, renameValue)
       await refresh()
+      window.dispatchEvent(new Event('sidebar-refresh'))
     } catch {
       setError('Rename failed')
     }
@@ -129,6 +164,7 @@ export default function FileExplorer({ initialPath, onLogout }: { initialPath: s
     try {
       await deleteFile(file.path)
       await refresh()
+      window.dispatchEvent(new Event('sidebar-refresh'))
     } catch {
       setError('Delete failed')
     }
@@ -230,7 +266,29 @@ export default function FileExplorer({ initialPath, onLogout }: { initialPath: s
             onRefresh={refresh}
             onLogout={handleLogout}
           />
-          <Breadcrumb path={path} homeFolder={user.homeFolder} onNavigate={navigate} />
+          <div className="flex items-center gap-1">
+            <button
+              onClick={goBack}
+              disabled={history.length === 0}
+              className="p-1 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-md transition disabled:opacity-30 disabled:hover:bg-transparent disabled:hover:text-gray-400"
+              title="Back"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+              </svg>
+            </button>
+            <button
+              onClick={goUp}
+              disabled={path === (user.homeFolder || '/')}
+              className="p-1 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-md transition disabled:opacity-30 disabled:hover:bg-transparent disabled:hover:text-gray-400"
+              title="Up one level"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" />
+              </svg>
+            </button>
+            <Breadcrumb path={path} homeFolder={user.homeFolder} onNavigate={navigate} />
+          </div>
         </div>
       </header>
 
@@ -264,8 +322,8 @@ export default function FileExplorer({ initialPath, onLogout }: { initialPath: s
               <thead>
                 <tr className="text-left text-xs text-gray-500 uppercase tracking-wider border-b border-gray-200">
                   <th className="pb-2 pl-2 font-medium">Name</th>
-                  <th className="pb-2 font-medium w-24 text-right">Size</th>
-                  <th className="pb-2 font-medium w-44 text-right pr-2">Modified</th>
+                  <th className="pb-2 font-medium text-right whitespace-nowrap pl-4">Size</th>
+                  <th className="pb-2 font-medium text-right pr-2 whitespace-nowrap pl-4">Modified</th>
                 </tr>
               </thead>
               <tbody>

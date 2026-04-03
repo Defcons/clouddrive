@@ -205,12 +205,15 @@ export async function createShare(path: string, safe = false): Promise<{ token: 
   return res.json()
 }
 
-// Quick access (stored in localStorage)
-const QUICK_ACCESS_KEY = 'clouddrive_quick_access'
+// Quick access (stored in localStorage, per-user)
+function quickAccessKey(): string {
+  const username = localStorage.getItem('username') || 'default'
+  return `clouddrive_quick_access_${username}`
+}
 
 export function getQuickAccess(): { name: string; path: string }[] {
   try {
-    return JSON.parse(localStorage.getItem(QUICK_ACCESS_KEY) || '[]')
+    return JSON.parse(localStorage.getItem(quickAccessKey()) || '[]')
   } catch {
     return []
   }
@@ -220,13 +223,13 @@ export function addQuickAccess(name: string, path: string) {
   const items = getQuickAccess()
   if (!items.find((i) => i.path === path)) {
     items.push({ name, path })
-    localStorage.setItem(QUICK_ACCESS_KEY, JSON.stringify(items))
+    localStorage.setItem(quickAccessKey(), JSON.stringify(items))
   }
 }
 
 export function removeQuickAccess(path: string) {
   const items = getQuickAccess().filter((i) => i.path !== path)
-  localStorage.setItem(QUICK_ACCESS_KEY, JSON.stringify(items))
+  localStorage.setItem(quickAccessKey(), JSON.stringify(items))
 }
 
 export async function getDiskUsage() {
