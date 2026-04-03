@@ -3,6 +3,7 @@ export interface FileItem {
   path: string
   isDir: boolean
   size: number
+  createdAt: number
   modTime: number
   itemCount?: number
   isPrivate?: boolean

@@ -319,12 +319,19 @@ export default function FileExplorer({ initialPath, onLogout }: { initialPath: s
               <p className="text-sm mt-1">Drop files here or click Upload</p>
             </div>
           ) : viewMode === 'list' ? (
-            <table className="w-full" style={{ tableLayout: 'auto' }}>
+            <table className="w-full" style={{ tableLayout: 'fixed' }}>
+              <colgroup>
+                <col />
+                <col style={{ width: '100px' }} />
+                <col style={{ width: '160px' }} />
+                <col style={{ width: '160px' }} />
+              </colgroup>
               <thead>
                 <tr className="text-left text-xs text-gray-500 uppercase tracking-wider border-b border-gray-200">
-                  <th className="pb-2 pl-2 font-medium" style={{ width: '100%' }}>Name</th>
-                  <th className="pb-2 font-medium text-right whitespace-nowrap pl-6">Size</th>
-                  <th className="pb-2 font-medium text-right pr-2 whitespace-nowrap pl-6">Modified</th>
+                  <th className="pb-2 pl-2 font-medium">Name</th>
+                  <th className="pb-2 font-medium text-right">Size</th>
+                  <th className="pb-2 font-medium text-right">Created</th>
+                  <th className="pb-2 font-medium text-right pr-2">Modified</th>
                 </tr>
               </thead>
               <tbody>
@@ -366,14 +373,17 @@ export default function FileExplorer({ initialPath, onLogout }: { initialPath: s
                         )}
                       </div>
                     </td>
-                    <td className="py-2 text-right text-sm text-gray-500">
+                    <td className="py-2 text-right text-sm text-gray-500 whitespace-nowrap">
                       {file.isDir
                         ? file.itemCount !== undefined
                           ? `${file.itemCount} item${file.itemCount !== 1 ? 's' : ''}`
                           : '—'
                         : formatSize(file.size)}
                     </td>
-                    <td className="py-2 text-right text-sm text-gray-500 pr-2">
+                    <td className="py-2 text-right text-sm text-gray-500 whitespace-nowrap">
+                      {formatDate(file.createdAt)}
+                    </td>
+                    <td className="py-2 text-right text-sm text-gray-500 pr-2 whitespace-nowrap">
                       {formatDate(file.modTime)}
                     </td>
                   </tr>
