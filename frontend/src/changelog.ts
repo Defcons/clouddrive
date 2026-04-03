@@ -1,4 +1,4 @@
-export const APP_VERSION = '0.0.11'
+export const APP_VERSION = '0.0.12'
 
 export interface ChangelogEntry {
   version: string
@@ -7,6 +7,20 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {
+    version: '0.0.12',
+    date: '2026-04-03',
+    changes: [
+      'Single click on files now opens preview instead of doing nothing',
+      'Multi-select with checkboxes — click the checkbox to toggle individual files',
+      'Shift-click to select a range of files',
+      'Ctrl/Cmd-click to toggle individual files without checkboxes',
+      'Select-all checkbox in the table header',
+      'Selection bar with Download and Delete bulk actions',
+      'Right-click on multi-selection shows bulk context menu (Download All, Delete All)',
+      'Selected files highlighted in blue across list and grid views',
+    ],
+  },
   {
     version: '0.0.11',
     date: '2026-04-03',
