@@ -1,4 +1,4 @@
-export const APP_VERSION = '0.0.26'
+export const APP_VERSION = '0.0.27'
 
 export interface ChangelogEntry {
   version: string
@@ -7,6 +7,18 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {
+    version: '0.0.27',
+    date: '2026-04-03',
+    changes: [
+      'File type filters — dropdown to filter by Images, Documents, Videos, Audio, Archives, Code',
+      'Keyboard shortcuts help — press ? to see all shortcuts in a categorized overlay',
+      'File info panel — select a file and press i or click the info icon to see full details sidebar',
+      'Batch rename — select multiple files, click "Batch Rename" for find/replace or prefix/suffix with live preview',
+      'Bookmarkable URLs — folder path synced to URL hash, share or bookmark direct links to folders',
+      'Info panel shows image preview, type, size, path, dates, tags, and privacy status',
+    ],
+  },
   {
     version: '0.0.26',
     date: '2026-04-03',
