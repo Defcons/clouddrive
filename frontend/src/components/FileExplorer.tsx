@@ -130,10 +130,14 @@ export default function FileExplorer({ onLogout }: { onLogout: () => void }) {
     onLogout()
   }
 
-  const handleDoubleClick = (file: FileItemType) => {
+  const handleClick = (file: FileItemType) => {
     if (file.isDir) {
       navigate(file.path)
-    } else {
+    }
+  }
+
+  const handleDoubleClick = (file: FileItemType) => {
+    if (!file.isDir) {
       handleDownload(file)
     }
   }
@@ -193,6 +197,7 @@ export default function FileExplorer({ onLogout }: { onLogout: () => void }) {
                   <tr
                     key={file.path}
                     className="hover:bg-gray-50 cursor-pointer group border-b border-gray-100 last:border-0"
+                    onClick={() => handleClick(file)}
                     onDoubleClick={() => handleDoubleClick(file)}
                     onContextMenu={(e) => handleContextMenu(e, file)}
                   >
