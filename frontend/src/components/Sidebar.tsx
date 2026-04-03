@@ -14,6 +14,9 @@ interface Props {
   homeFolder: string
   onNavigate: (path: string) => void
   onContextMenu: (e: React.MouseEvent, file: FileItem) => void
+  onShowTrash: () => void
+  diskUsage: { totalSize: number } | null
+  onDrop?: (paths: string[], destination: string) => void
 }
 
 function SidebarItem({
@@ -226,7 +229,14 @@ function SidebarItemWrapper({
   )
 }
 
-export default function Sidebar({ currentPath, homeFolder, onNavigate, onContextMenu }: Props) {
+function formatBytes(bytes: number): string {
+  if (bytes === 0) return '0 B'
+  const units = ['B', 'KB', 'MB', 'GB', 'TB']
+  const i = Math.floor(Math.log(bytes) / Math.log(1024))
+  return `${(bytes / Math.pow(1024, i)).toFixed(1)} ${units[i]}`
+}
+
+export default function Sidebar({ currentPath, homeFolder, onNavigate, onContextMenu, onShowTrash, diskUsage, onDrop }: Props) {
   const [rootFolders, setRootFolders] = useState<TreeNode[]>([])
   const [loading, setLoading] = useState(true)
   const [collapsed, setCollapsed] = useState(false)
@@ -395,6 +405,29 @@ export default function Sidebar({ currentPath, homeFolder, onNavigate, onContext
           ))
         )}
       </div>
+
+      {/* Trash */}
+      <div className="border-t border-gray-100 dark:border-gray-700 px-1 py-1">
+        <button
+          onClick={onShowTrash}
+          className="w-full flex items-center gap-1.5 py-1 px-2 text-left text-sm rounded-md text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 transition"
+        >
+          <svg className="w-4 h-4 text-gray-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+          </svg>
+          <span className="truncate">Trash</span>
+        </button>
+      </div>
+
+      {/* Storage usage */}
+      {diskUsage && (
+        <div className="border-t border-gray-100 dark:border-gray-700 px-3 py-2">
+          <div className="text-xs text-gray-400 mb-1">{formatBytes(diskUsage.totalSize)} used</div>
+          <div className="h-1 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
+            <div className="h-full bg-blue-500 rounded-full" style={{ width: '100%' }} />
+          </div>
+        </div>
+      )}
     </div>
   )
 }

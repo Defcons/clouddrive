@@ -1,4 +1,4 @@
-export const APP_VERSION = '0.0.22'
+export const APP_VERSION = '0.0.23'
 
 export interface ChangelogEntry {
   version: string
@@ -7,6 +7,26 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {
+    version: '0.0.23',
+    date: '2026-04-03',
+    changes: [
+      'Search — search bar in toolbar, live results as you type, finds files across all folders',
+      'Trash / Recycle Bin — deleted files go to trash instead of permanent deletion, 30-day auto-purge',
+      'Trash viewer accessible from sidebar, with restore and permanent delete options',
+      'Cut / Copy / Paste — Ctrl+X, Ctrl+C, Ctrl+V for moving and copying files between folders',
+      'Cut/Copy options in context menu and bulk selection bar',
+      'Paste button appears in toolbar when clipboard has items, cut items shown with reduced opacity',
+      'Recent Files — clock icon in toolbar opens a list of recently modified files',
+      'Keyboard shortcuts — Delete, Ctrl+A, Ctrl+C/X/V, Enter, F2, Ctrl+F, Ctrl+Shift+N',
+      'Storage usage indicator in sidebar footer showing total disk usage',
+      'Drag & drop to move — drag files onto folders in the file list to move them',
+      'Tags / Labels — colored tag system stored per-file, visible in file listings',
+      'Zip/Unzip — right-click .zip files to "Extract Here", or select files and "Compress to Zip"',
+      'Notifications — bell icon with unread count, notified when files are shared with you',
+      'Mobile CSS improvements — responsive sidebar, touch-friendly targets',
+    ],
+  },
   {
     version: '0.0.22',
     date: '2026-04-03',

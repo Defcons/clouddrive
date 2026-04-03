@@ -20,6 +20,8 @@ type FileHandler struct {
 	root      string
 	permStore *services.PermissionStore
 	audit     *services.AuditLogger
+	trash     *services.TrashStore
+	tags      *services.TagStore
 }
 
 type FileInfo struct {
@@ -29,8 +31,9 @@ type FileInfo struct {
 	Size      int64  `json:"size"`
 	CreatedAt int64  `json:"createdAt"`
 	ModTime   int64  `json:"modTime"`
-	ItemCount *int   `json:"itemCount,omitempty"`
-	IsPrivate bool   `json:"isPrivate,omitempty"`
+	ItemCount *int    `json:"itemCount,omitempty"`
+	IsPrivate bool    `json:"isPrivate,omitempty"`
+	Tags      []string `json:"tags,omitempty"`
 }
 
 // getCreationTime tries to get the file creation/change time, falls back to ModTime
@@ -46,8 +49,8 @@ func getCreationTime(info os.FileInfo) int64 {
 	return info.ModTime().UnixMilli()
 }
 
-func NewFileHandler(root string, permStore *services.PermissionStore, audit *services.AuditLogger) *FileHandler {
-	return &FileHandler{root: root, permStore: permStore, audit: audit}
+func NewFileHandler(root string, permStore *services.PermissionStore, audit *services.AuditLogger, trash *services.TrashStore, tags *services.TagStore) *FileHandler {
+	return &FileHandler{root: root, permStore: permStore, audit: audit, trash: trash, tags: tags}
 }
 
 func getClientIP(r *http.Request) string {
@@ -176,6 +179,11 @@ func (h *FileHandler) List(w http.ResponseWriter, r *http.Request) {
 			}
 			if h.permStore != nil {
 				fi.IsPrivate = h.permStore.IsPrivate(entryPath)
+			}
+		}
+		if h.tags != nil {
+			if t := h.tags.GetTags(entryPath); len(t) > 0 {
+				fi.Tags = t
 			}
 		}
 		files = append(files, fi)
@@ -480,15 +488,498 @@ func (h *FileHandler) Delete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := os.RemoveAll(absPath); err != nil {
-		http.Error(w, "Failed to delete", http.StatusInternalServerError)
-		return
+	username := middleware.GetUsername(r)
+
+	if h.trash != nil {
+		if err := h.trash.MoveToTrash(absPath, filePath, username); err != nil {
+			http.Error(w, "Failed to move to trash", http.StatusInternalServerError)
+			return
+		}
+	} else {
+		if err := os.RemoveAll(absPath); err != nil {
+			http.Error(w, "Failed to delete", http.StatusInternalServerError)
+			return
+		}
 	}
 
 	if h.audit != nil {
-		h.audit.Log("DELETE", middleware.GetUsername(r), getClientIP(r), fmt.Sprintf("deleted %s", filePath))
+		h.audit.Log("DELETE", username, getClientIP(r), fmt.Sprintf("deleted %s", filePath))
 	}
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]string{"deleted": filePath})
+}
+
+func (h *FileHandler) Search(w http.ResponseWriter, r *http.Request) {
+	query := strings.ToLower(r.URL.Query().Get("q"))
+	if query == "" {
+		http.Error(w, "query required", http.StatusBadRequest)
+		return
+	}
+
+	username := middleware.GetUsername(r)
+	role := middleware.GetRole(r)
+	homeFolder := "/"
+	if hf, ok := r.Context().Value("homeFolder").(string); ok && hf != "" {
+		homeFolder = hf
+	}
+
+	searchRoot := filepath.Join(h.root, homeFolder)
+	if role == "admin" {
+		searchRoot = h.root
+	}
+
+	var results []FileInfo
+	filepath.Walk(searchRoot, func(path string, info os.FileInfo, err error) error {
+		if err != nil || len(results) >= 100 {
+			return nil
+		}
+		if strings.HasPrefix(info.Name(), ".") {
+			if info.IsDir() {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+
+		if strings.Contains(strings.ToLower(info.Name()), query) {
+			relPath, _ := filepath.Rel(h.root, path)
+			entryPath := "/" + filepath.ToSlash(relPath)
+
+			if h.permStore != nil && !h.permStore.CanAccess(entryPath, username, role) {
+				return nil
+			}
+
+			fi := FileInfo{
+				Name:      info.Name(),
+				Path:      entryPath,
+				IsDir:     info.IsDir(),
+				Size:      info.Size(),
+				CreatedAt: getCreationTime(info),
+				ModTime:   info.ModTime().UnixMilli(),
+			}
+			results = append(results, fi)
+		}
+		return nil
+	})
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(results)
+}
+
+func (h *FileHandler) Move(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Paths       []string `json:"paths"`
+		Destination string   `json:"destination"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "Invalid request", http.StatusBadRequest)
+		return
+	}
+
+	if !h.checkAccess(r, req.Destination) {
+		http.Error(w, "Access denied to destination", http.StatusForbidden)
+		return
+	}
+
+	absDest, err := h.safePath(req.Destination)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	moved := 0
+	for _, p := range req.Paths {
+		if !h.checkAccess(r, filepath.ToSlash(filepath.Dir(p))) {
+			continue
+		}
+		absSrc, err := h.safePath(p)
+		if err != nil {
+			continue
+		}
+		newPath := filepath.Join(absDest, filepath.Base(absSrc))
+		if err := os.Rename(absSrc, newPath); err == nil {
+			moved++
+		}
+	}
+
+	if h.audit != nil {
+		h.audit.Log("MOVE", middleware.GetUsername(r), getClientIP(r), fmt.Sprintf("moved %d item(s) to %s", moved, req.Destination))
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]int{"moved": moved})
+}
+
+func (h *FileHandler) Copy(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Paths       []string `json:"paths"`
+		Destination string   `json:"destination"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "Invalid request", http.StatusBadRequest)
+		return
+	}
+
+	if !h.checkAccess(r, req.Destination) {
+		http.Error(w, "Access denied to destination", http.StatusForbidden)
+		return
+	}
+
+	absDest, err := h.safePath(req.Destination)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	copied := 0
+	for _, p := range req.Paths {
+		if !h.checkAccess(r, filepath.ToSlash(filepath.Dir(p))) {
+			continue
+		}
+		absSrc, err := h.safePath(p)
+		if err != nil {
+			continue
+		}
+		newPath := filepath.Join(absDest, filepath.Base(absSrc))
+		if err := copyPath(absSrc, newPath); err == nil {
+			copied++
+		}
+	}
+
+	if h.audit != nil {
+		h.audit.Log("COPY", middleware.GetUsername(r), getClientIP(r), fmt.Sprintf("copied %d item(s) to %s", copied, req.Destination))
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]int{"copied": copied})
+}
+
+func copyPath(src, dst string) error {
+	info, err := os.Stat(src)
+	if err != nil {
+		return err
+	}
+	if info.IsDir() {
+		return copyDir(src, dst)
+	}
+	return copyFile(src, dst)
+}
+
+func copyFile(src, dst string) error {
+	sf, err := os.Open(src)
+	if err != nil {
+		return err
+	}
+	defer sf.Close()
+
+	df, err := os.Create(dst)
+	if err != nil {
+		return err
+	}
+	defer df.Close()
+
+	_, err = io.Copy(df, sf)
+	return err
+}
+
+func copyDir(src, dst string) error {
+	if err := os.MkdirAll(dst, 0755); err != nil {
+		return err
+	}
+	entries, err := os.ReadDir(src)
+	if err != nil {
+		return err
+	}
+	for _, entry := range entries {
+		srcPath := filepath.Join(src, entry.Name())
+		dstPath := filepath.Join(dst, entry.Name())
+		if entry.IsDir() {
+			if err := copyDir(srcPath, dstPath); err != nil {
+				return err
+			}
+		} else {
+			if err := copyFile(srcPath, dstPath); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+func (h *FileHandler) Recent(w http.ResponseWriter, r *http.Request) {
+	username := middleware.GetUsername(r)
+	role := middleware.GetRole(r)
+	homeFolder := "/"
+	if hf, ok := r.Context().Value("homeFolder").(string); ok && hf != "" {
+		homeFolder = hf
+	}
+
+	searchRoot := filepath.Join(h.root, homeFolder)
+	if role == "admin" {
+		searchRoot = h.root
+	}
+
+	type modFile struct {
+		info FileInfo
+		mod  int64
+	}
+	var recentFiles []modFile
+
+	filepath.Walk(searchRoot, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return nil
+		}
+		if strings.HasPrefix(info.Name(), ".") {
+			if info.IsDir() {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		if info.IsDir() {
+			return nil
+		}
+
+		relPath, _ := filepath.Rel(h.root, path)
+		entryPath := "/" + filepath.ToSlash(relPath)
+
+		if h.permStore != nil && !h.permStore.CanAccess(filepath.Dir(entryPath), username, role) {
+			return nil
+		}
+
+		recentFiles = append(recentFiles, modFile{
+			info: FileInfo{
+				Name:      info.Name(),
+				Path:      entryPath,
+				IsDir:     false,
+				Size:      info.Size(),
+				CreatedAt: getCreationTime(info),
+				ModTime:   info.ModTime().UnixMilli(),
+			},
+			mod: info.ModTime().UnixMilli(),
+		})
+		return nil
+	})
+
+	sort.Slice(recentFiles, func(i, j int) bool {
+		return recentFiles[i].mod > recentFiles[j].mod
+	})
+
+	limit := 30
+	if len(recentFiles) > limit {
+		recentFiles = recentFiles[:limit]
+	}
+
+	results := make([]FileInfo, len(recentFiles))
+	for i, f := range recentFiles {
+		results[i] = f.info
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(results)
+}
+
+func (h *FileHandler) Extract(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Path string `json:"path"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "Invalid request", http.StatusBadRequest)
+		return
+	}
+
+	if !h.checkAccess(r, filepath.ToSlash(filepath.Dir(req.Path))) {
+		http.Error(w, "Access denied", http.StatusForbidden)
+		return
+	}
+
+	absPath, err := h.safePath(req.Path)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	ext := strings.ToLower(filepath.Ext(absPath))
+	if ext != ".zip" {
+		http.Error(w, "Only .zip files can be extracted", http.StatusBadRequest)
+		return
+	}
+
+	destDir := filepath.Dir(absPath)
+	reader, err := zip.OpenReader(absPath)
+	if err != nil {
+		http.Error(w, "Failed to open zip file", http.StatusInternalServerError)
+		return
+	}
+	defer reader.Close()
+
+	extracted := 0
+	for _, f := range reader.File {
+		fpath := filepath.Join(destDir, f.Name)
+		// Prevent zip slip
+		if !strings.HasPrefix(filepath.Clean(fpath), filepath.Clean(destDir)) {
+			continue
+		}
+		if f.FileInfo().IsDir() {
+			os.MkdirAll(fpath, 0755)
+			continue
+		}
+		os.MkdirAll(filepath.Dir(fpath), 0755)
+		outFile, err := os.Create(fpath)
+		if err != nil {
+			continue
+		}
+		rc, err := f.Open()
+		if err != nil {
+			outFile.Close()
+			continue
+		}
+		io.Copy(outFile, rc)
+		rc.Close()
+		outFile.Close()
+		extracted++
+	}
+
+	if h.audit != nil {
+		h.audit.Log("EXTRACT", middleware.GetUsername(r), getClientIP(r), fmt.Sprintf("extracted %s (%d files)", req.Path, extracted))
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]int{"extracted": extracted})
+}
+
+func (h *FileHandler) Compress(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Paths []string `json:"paths"`
+		Name  string   `json:"name"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "Invalid request", http.StatusBadRequest)
+		return
+	}
+
+	if len(req.Paths) == 0 {
+		http.Error(w, "No files specified", http.StatusBadRequest)
+		return
+	}
+
+	// Create zip in same directory as first file
+	firstDir := filepath.ToSlash(filepath.Dir(req.Paths[0]))
+	if !h.checkAccess(r, firstDir) {
+		http.Error(w, "Access denied", http.StatusForbidden)
+		return
+	}
+
+	zipName := req.Name
+	if zipName == "" {
+		zipName = "archive.zip"
+	}
+	if !strings.HasSuffix(zipName, ".zip") {
+		zipName += ".zip"
+	}
+
+	absDir, err := h.safePath(firstDir)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	zipPath := filepath.Join(absDir, zipName)
+	zipFile, err := os.Create(zipPath)
+	if err != nil {
+		http.Error(w, "Failed to create zip", http.StatusInternalServerError)
+		return
+	}
+	defer zipFile.Close()
+
+	zw := zip.NewWriter(zipFile)
+	defer zw.Close()
+
+	for _, p := range req.Paths {
+		absSrc, err := h.safePath(p)
+		if err != nil {
+			continue
+		}
+		info, err := os.Stat(absSrc)
+		if err != nil {
+			continue
+		}
+		if info.IsDir() {
+			filepath.Walk(absSrc, func(fpath string, finfo os.FileInfo, ferr error) error {
+				if ferr != nil || finfo.IsDir() {
+					return nil
+				}
+				relPath, _ := filepath.Rel(absDir, fpath)
+				header, _ := zip.FileInfoHeader(finfo)
+				header.Name = filepath.ToSlash(relPath)
+				header.Method = zip.Deflate
+				writer, _ := zw.CreateHeader(header)
+				f, err := os.Open(fpath)
+				if err != nil {
+					return nil
+				}
+				defer f.Close()
+				io.Copy(writer, f)
+				return nil
+			})
+		} else {
+			header, _ := zip.FileInfoHeader(info)
+			header.Name = info.Name()
+			header.Method = zip.Deflate
+			writer, _ := zw.CreateHeader(header)
+			f, err := os.Open(absSrc)
+			if err != nil {
+				continue
+			}
+			io.Copy(writer, f)
+			f.Close()
+		}
+	}
+
+	if h.audit != nil {
+		h.audit.Log("COMPRESS", middleware.GetUsername(r), getClientIP(r), fmt.Sprintf("created %s/%s", firstDir, zipName))
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]string{"created": firstDir + "/" + zipName})
+}
+
+func (h *FileHandler) SetTags(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Path string   `json:"path"`
+		Tags []string `json:"tags"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "Invalid request", http.StatusBadRequest)
+		return
+	}
+
+	if h.tags == nil {
+		http.Error(w, "Tags not available", http.StatusInternalServerError)
+		return
+	}
+
+	if err := h.tags.SetTags(req.Path, req.Tags); err != nil {
+		http.Error(w, "Failed to set tags", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{"path": req.Path, "tags": req.Tags})
+}
+
+func (h *FileHandler) GetTags(w http.ResponseWriter, r *http.Request) {
+	path := r.URL.Query().Get("path")
+	if h.tags == nil {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode([]string{})
+		return
+	}
+
+	tags := h.tags.GetTags(path)
+	if tags == nil {
+		tags = []string{}
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(tags)
 }

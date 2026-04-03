@@ -1,6 +1,6 @@
-import { useState, useEffect, useCallback } from 'react'
-import type { FileItem as FileItemType, ViewMode } from '../types'
-import { listFiles, downloadFile, uploadFiles, createFolder, renameFile, deleteFile, logout, isPreviewable, addQuickAccess, setFolderPrivate, removeFolderPrivate } from '../api'
+import { useState, useEffect, useCallback, useRef } from 'react'
+import type { FileItem as FileItemType, ViewMode, Clipboard, TAG_COLORS } from '../types'
+import { listFiles, downloadFile, uploadFiles, createFolder, renameFile, deleteFile, logout, isPreviewable, addQuickAccess, setFolderPrivate, removeFolderPrivate, moveFiles, copyFiles, extractZip, compressFiles, setFileTags, getDiskUsage } from '../api'
 import Breadcrumb from './Breadcrumb'
 import Toolbar from './Toolbar'
 import FileIcon from './FileIcon'
@@ -14,6 +14,9 @@ import UpdateToast from './UpdateToast'
 import ChangelogModal from './ChangelogModal'
 import SettingsModal from './SettingsModal'
 import AuditLogModal from './AuditLogModal'
+import TrashView from './TrashView'
+import RecentFiles from './RecentFiles'
+import NotificationBell from './NotificationBell'
 import { APP_VERSION } from '../changelog'
 import { getCurrentUser } from '../api'
 import { useTheme } from '../hooks/useTheme'
@@ -78,6 +81,11 @@ export default function FileExplorer({ initialPath, onLogout }: { initialPath: s
   const [showChangelog, setShowChangelog] = useState(false)
   const [showSettings, setShowSettings] = useState(false)
   const [showAuditLog, setShowAuditLog] = useState(false)
+  const [showTrash, setShowTrash] = useState(false)
+  const [showRecent, setShowRecent] = useState(false)
+  const [clipboard, setClipboard] = useState<Clipboard | null>(null)
+  const [diskUsage, setDiskUsage] = useState<{ totalSize: number } | null>(null)
+  const searchRef = useRef<HTMLInputElement>(null)
   const [sortBy, setSortBy] = useState<'name' | 'size' | 'createdAt' | 'modTime'>('name')
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc')
   const [selectedFiles, setSelectedFiles] = useState<Set<string>>(new Set())
@@ -170,29 +178,55 @@ export default function FileExplorer({ initialPath, onLogout }: { initialPath: s
     return () => window.removeEventListener('mouseup', handler)
   }, [history, path])
 
-  // Global Escape key — cascading close: modals > context menu > selection > rename
+  // Global keyboard shortcuts
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
-      if (e.key !== 'Escape') return
-      // Modals handle their own Escape, but if none are open, handle here
-      if (previewFile || shareFile || showChangelog || showSettings) return
-      if (contextMenu) {
-        setContextMenu(null)
+      const isInput = e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement
+      const mod = e.ctrlKey || e.metaKey
+
+      if (e.key === 'Escape') {
+        if (previewFile || shareFile || showChangelog || showSettings || showTrash || showRecent || showAuditLog) return
+        if (contextMenu) { setContextMenu(null); return }
+        if (clipboard) { setClipboard(null); return }
+        if (renaming) { setRenaming(null); return }
+        if (selectedFiles.size > 0) { setSelectedFiles(new Set()); setLastClickedPath(null); return }
         return
       }
-      if (renaming) {
-        setRenaming(null)
+
+      if (isInput && !mod) return
+
+      if (mod && e.key === 'a') { e.preventDefault(); setSelectedFiles(new Set(files.map((f) => f.path))); return }
+      if (mod && e.key === 'c' && !isInput && selectedFiles.size > 0) { setClipboard({ paths: Array.from(selectedFiles), mode: 'copy' }); return }
+      if (mod && e.key === 'x' && !isInput && selectedFiles.size > 0) { setClipboard({ paths: Array.from(selectedFiles), mode: 'cut' }); return }
+      if (mod && e.key === 'v' && !isInput) { handlePaste(); return }
+      if (mod && e.key === 'f') { e.preventDefault(); searchRef.current?.focus(); return }
+      if (mod && e.shiftKey && e.key === 'N') { e.preventDefault(); handleNewFolder(); return }
+
+      if ((e.key === 'Delete' || e.key === 'Backspace') && !isInput && selectedFiles.size > 0) {
+        const selected = getSelectedFileObjects()
+        if (confirm(`Move ${selected.length} item(s) to trash?`)) {
+          Promise.all(selected.map((f) => deleteFile(f.path))).then(() => {
+            setSelectedFiles(new Set()); refresh(); window.dispatchEvent(new Event('sidebar-refresh'))
+          })
+        }
         return
       }
-      if (selectedFiles.size > 0) {
-        setSelectedFiles(new Set())
-        setLastClickedPath(null)
+
+      if (e.key === 'F2' && !isInput && selectedFiles.size === 1) {
+        const file = files.find((f) => f.path === Array.from(selectedFiles)[0])
+        if (file) { setRenaming(file.path); setRenameValue(file.name) }
+        return
+      }
+
+      if (e.key === 'Enter' && !isInput && selectedFiles.size === 1) {
+        const file = files.find((f) => f.path === Array.from(selectedFiles)[0])
+        if (file) { file.isDir ? navigate(file.path) : handlePreview(file) }
         return
       }
     }
     window.addEventListener('keydown', handler)
     return () => window.removeEventListener('keydown', handler)
-  }, [previewFile, shareFile, showChangelog, showSettings, contextMenu, renaming, selectedFiles])
+  }, [previewFile, shareFile, showChangelog, showSettings, showTrash, showRecent, showAuditLog, contextMenu, renaming, selectedFiles, clipboard, files, path])
 
   const handleUpload = async (fileList: FileList) => {
     setUploadProgress(0)
@@ -293,6 +327,78 @@ export default function FileExplorer({ initialPath, onLogout }: { initialPath: s
       await refresh()
     } catch {
       setError('Failed to make folder public')
+    }
+  }
+
+  // Disk usage
+  useEffect(() => {
+    getDiskUsage().then(setDiskUsage).catch(() => {})
+    const interval = setInterval(() => getDiskUsage().then(setDiskUsage).catch(() => {}), 5 * 60 * 1000)
+    return () => clearInterval(interval)
+  }, [])
+
+  // Clipboard operations
+  const handleCut = () => {
+    const paths = Array.from(selectedFiles)
+    if (paths.length === 0) return
+    setClipboard({ paths, mode: 'cut' })
+    setContextMenu(null)
+  }
+
+  const handleCopy = () => {
+    const paths = Array.from(selectedFiles)
+    if (paths.length === 0) return
+    setClipboard({ paths, mode: 'copy' })
+    setContextMenu(null)
+  }
+
+  const handlePaste = async () => {
+    if (!clipboard) return
+    try {
+      if (clipboard.mode === 'cut') {
+        await moveFiles(clipboard.paths, path)
+      } else {
+        await copyFiles(clipboard.paths, path)
+      }
+      if (clipboard.mode === 'cut') setClipboard(null)
+      await refresh()
+      window.dispatchEvent(new Event('sidebar-refresh'))
+    } catch {
+      setError('Paste failed')
+    }
+  }
+
+  // Extract / Compress
+  const handleExtract = async (file: FileItemType) => {
+    setContextMenu(null)
+    try {
+      await extractZip(file.path)
+      await refresh()
+    } catch {
+      setError('Extract failed')
+    }
+  }
+
+  const handleCompress = async () => {
+    setContextMenu(null)
+    const selected = getSelectedFileObjects()
+    const name = prompt('Archive name:', 'archive.zip')
+    if (!name) return
+    try {
+      await compressFiles(selected.map((f) => f.path), name)
+      await refresh()
+    } catch {
+      setError('Compress failed')
+    }
+  }
+
+  // Tags
+  const handleSetTags = async (file: FileItemType, tags: string[]) => {
+    try {
+      await setFileTags(file.path, tags)
+      await refresh()
+    } catch {
+      setError('Failed to set tags')
     }
   }
 
@@ -455,6 +561,7 @@ export default function FileExplorer({ initialPath, onLogout }: { initialPath: s
                   </svg>
                 )}
               </button>
+              <NotificationBell onNavigate={navigate} />
               {user.role === 'admin' && (
                 <button
                   onClick={() => setShowAuditLog(true)}
@@ -485,6 +592,11 @@ export default function FileExplorer({ initialPath, onLogout }: { initialPath: s
             onNewFolder={handleNewFolder}
             onRefresh={refresh}
             onLogout={handleLogout}
+            onPaste={handlePaste}
+            onNavigate={navigate}
+            onShowRecent={() => setShowRecent(true)}
+            clipboard={clipboard}
+            searchRef={searchRef}
           />
           <div className="flex items-center gap-1.5">
             <button
@@ -523,7 +635,15 @@ export default function FileExplorer({ initialPath, onLogout }: { initialPath: s
 
       {/* Main area with sidebar */}
       <div className="flex flex-1 min-h-0">
-        <Sidebar currentPath={path} homeFolder={user.homeFolder} onNavigate={navigate} onContextMenu={handleContextMenu} />
+        <Sidebar
+          currentPath={path}
+          homeFolder={user.homeFolder}
+          onNavigate={navigate}
+          onContextMenu={handleContextMenu}
+          onShowTrash={() => setShowTrash(true)}
+          diskUsage={diskUsage}
+          onDrop={(paths, dest) => moveFiles(paths, dest).then(() => { refresh(); window.dispatchEvent(new Event('sidebar-refresh')) })}
+        />
 
         {/* File list */}
         <UploadZone onUpload={handleUpload} uploadProgress={uploadProgress}>
@@ -533,18 +653,10 @@ export default function FileExplorer({ initialPath, onLogout }: { initialPath: s
               <span className="text-sm text-blue-700 font-medium">
                 {selectedFiles.size} item{selectedFiles.size !== 1 ? 's' : ''} selected
               </span>
-              <button
-                onClick={handleBulkDownload}
-                className="text-xs px-2.5 py-1 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition"
-              >
-                Download
-              </button>
-              <button
-                onClick={handleBulkDelete}
-                className="text-xs px-2.5 py-1 bg-red-500 text-white rounded-md hover:bg-red-600 transition"
-              >
-                Delete
-              </button>
+              <button onClick={handleCut} className="text-xs px-2.5 py-1 bg-gray-600 text-white rounded-md hover:bg-gray-700 transition">Cut</button>
+              <button onClick={handleCopy} className="text-xs px-2.5 py-1 bg-gray-600 text-white rounded-md hover:bg-gray-700 transition">Copy</button>
+              <button onClick={handleBulkDownload} className="text-xs px-2.5 py-1 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition">Download</button>
+              <button onClick={handleBulkDelete} className="text-xs px-2.5 py-1 bg-red-500 text-white rounded-md hover:bg-red-600 transition">Delete</button>
               <button
                 onClick={() => setSelectedFiles(new Set())}
                 className="text-xs text-blue-600 hover:text-blue-800 ml-auto"
@@ -603,7 +715,29 @@ export default function FileExplorer({ initialPath, onLogout }: { initialPath: s
                     key={file.path}
                     className={`cursor-pointer group border-b border-gray-100 dark:border-gray-800 last:border-0 ${
                       selectedFiles.has(file.path) ? 'bg-blue-50 dark:bg-blue-900/30' : 'hover:bg-gray-50 dark:hover:bg-gray-800'
-                    }`}
+                    } ${clipboard?.mode === 'cut' && clipboard.paths.includes(file.path) ? 'opacity-50' : ''}`}
+                    draggable
+                    onDragStart={(e) => {
+                      const paths = selectedFiles.has(file.path) ? Array.from(selectedFiles) : [file.path]
+                      e.dataTransfer.setData('application/clouddrive-paths', JSON.stringify(paths))
+                      e.dataTransfer.effectAllowed = 'move'
+                    }}
+                    onDragOver={(e) => {
+                      if (file.isDir) { e.preventDefault(); e.currentTarget.classList.add('bg-blue-100', 'dark:bg-blue-900/40') }
+                    }}
+                    onDragLeave={(e) => {
+                      e.currentTarget.classList.remove('bg-blue-100', 'dark:bg-blue-900/40')
+                    }}
+                    onDrop={(e) => {
+                      e.preventDefault()
+                      e.currentTarget.classList.remove('bg-blue-100', 'dark:bg-blue-900/40')
+                      if (!file.isDir) return
+                      const data = e.dataTransfer.getData('application/clouddrive-paths')
+                      if (data) {
+                        const paths = JSON.parse(data) as string[]
+                        moveFiles(paths, file.path).then(() => { refresh(); window.dispatchEvent(new Event('sidebar-refresh')) })
+                      }
+                    }}
                     onClick={(e) => handleClick(e, file)}
                     onDoubleClick={() => handleDoubleClick(file)}
                     onMouseDown={(e) => {
@@ -741,6 +875,9 @@ export default function FileExplorer({ initialPath, onLogout }: { initialPath: s
           y={contextMenu.y}
           count={selectedFiles.size}
           onDownload={handleBulkDownload}
+          onCut={handleCut}
+          onCopy={handleCopy}
+          onCompress={handleCompress}
           onDelete={handleBulkDelete}
           onClose={() => setContextMenu(null)}
         />
@@ -755,8 +892,12 @@ export default function FileExplorer({ initialPath, onLogout }: { initialPath: s
           onShare={() => handleShare(contextMenu.file, false)}
           onSafeShare={() => handleShare(contextMenu.file, true)}
           onDownload={() => handleDownload(contextMenu.file)}
+          onCut={() => { setSelectedFiles(new Set([contextMenu.file.path])); handleCut() }}
+          onCopy={() => { setSelectedFiles(new Set([contextMenu.file.path])); handleCopy() }}
           onRename={() => handleRenameStart(contextMenu.file)}
           onDelete={() => handleDelete(contextMenu.file)}
+          onExtract={() => handleExtract(contextMenu.file)}
+          isZip={contextMenu.file.name.toLowerCase().endsWith('.zip')}
           onQuickAccess={() => handleQuickAccess(contextMenu.file)}
           onMakePrivate={() => handleMakePrivate(contextMenu.file)}
           onMakePublic={() => handleMakePublic(contextMenu.file)}
@@ -783,6 +924,14 @@ export default function FileExplorer({ initialPath, onLogout }: { initialPath: s
 
       {showAuditLog && (
         <AuditLogModal onClose={() => setShowAuditLog(false)} />
+      )}
+
+      {showTrash && (
+        <TrashView onClose={() => setShowTrash(false)} onNavigate={navigate} />
+      )}
+
+      {showRecent && (
+        <RecentFiles onClose={() => setShowRecent(false)} onNavigate={navigate} />
       )}
 
       <UpdateToast />
