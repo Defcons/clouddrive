@@ -1,4 +1,4 @@
-export const APP_VERSION = '0.0.23'
+export const APP_VERSION = '0.0.24'
 
 export interface ChangelogEntry {
   version: string
@@ -7,6 +7,24 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {
+    version: '0.0.24',
+    date: '2026-04-03',
+    changes: [
+      'Toast notifications for all actions — upload, delete, rename, move, copy, extract, compress',
+      'Undo delete — toast shows "Undo" button after moving files to trash, click to restore instantly',
+      'View and sort preferences saved to localStorage — remembered across sessions',
+      'Selection bar shows total size of selected files',
+      'Loading skeleton animation instead of plain "Loading..." text',
+      'Pagination — large folders show first 100 items with "Load more" button',
+      'Breadcrumb overflow — long paths collapsed with "..." showing first and last 2 segments',
+      'Drag & drop onto sidebar folders — drag files from the file list onto sidebar folders to move them',
+      'Right-click empty space shows Paste option when clipboard has items',
+      'Folder transition animation for smoother navigation',
+      'Cut items shown at 50% opacity in file list',
+      'Cut/Copy buttons added to selection bar',
+    ],
+  },
   {
     version: '0.0.23',
     date: '2026-04-03',

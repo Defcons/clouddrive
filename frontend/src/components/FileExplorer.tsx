@@ -20,6 +20,9 @@ import NotificationBell from './NotificationBell'
 import { APP_VERSION } from '../changelog'
 import { getCurrentUser } from '../api'
 import { useTheme } from '../hooks/useTheme'
+import { useToast } from '../hooks/useToast'
+import ToastContainer from './ToastContainer'
+import LoadingSkeleton from './LoadingSkeleton'
 
 function formatSize(bytes: number): string {
   if (bytes === 0) return '—'
@@ -68,7 +71,7 @@ export default function FileExplorer({ initialPath, onLogout }: { initialPath: s
   const [path, setPath] = useState(initialPath || '/')
   const [history, setHistory] = useState<string[]>([])
   const [files, setFiles] = useState<FileItemType[]>([])
-  const [viewMode, setViewMode] = useState<ViewMode>('list')
+  const [viewMode, setViewMode] = useState<ViewMode>(() => (localStorage.getItem('clouddrive_viewMode') as ViewMode) || 'list')
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [uploadProgress, setUploadProgress] = useState<number | null>(null)
@@ -86,12 +89,36 @@ export default function FileExplorer({ initialPath, onLogout }: { initialPath: s
   const [clipboard, setClipboard] = useState<Clipboard | null>(null)
   const [diskUsage, setDiskUsage] = useState<{ totalSize: number } | null>(null)
   const searchRef = useRef<HTMLInputElement>(null)
-  const [sortBy, setSortBy] = useState<'name' | 'size' | 'createdAt' | 'modTime'>('name')
-  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc')
+  const [sortBy, setSortBy] = useState<'name' | 'size' | 'createdAt' | 'modTime'>(() => (localStorage.getItem('clouddrive_sortBy') as any) || 'name')
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>(() => (localStorage.getItem('clouddrive_sortDir') as any) || 'asc')
+  const [visibleCount, setVisibleCount] = useState(100)
   const [selectedFiles, setSelectedFiles] = useState<Set<string>>(new Set())
   const [lastClickedPath, setLastClickedPath] = useState<string | null>(null)
   const user = getCurrentUser()
   const { theme, toggle: toggleTheme } = useTheme()
+  const toast = useToast()
+
+  // Save preferences
+  useEffect(() => { localStorage.setItem('clouddrive_viewMode', viewMode) }, [viewMode])
+  useEffect(() => { localStorage.setItem('clouddrive_sortBy', sortBy) }, [sortBy])
+  useEffect(() => { localStorage.setItem('clouddrive_sortDir', sortDir) }, [sortDir])
+
+  // Reset pagination when path changes
+  useEffect(() => { setVisibleCount(100) }, [path])
+
+  // Listen for sidebar drop events
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const { paths, destination } = (e as CustomEvent).detail
+      moveFiles(paths, destination).then(() => {
+        refresh()
+        window.dispatchEvent(new Event('sidebar-refresh'))
+        toast.success(`Moved ${paths.length} item(s)`)
+      }).catch(() => toast.error('Move failed'))
+    }
+    window.addEventListener('clouddrive-drop', handler)
+    return () => window.removeEventListener('clouddrive-drop', handler)
+  }, [path])
 
   const handleSort = (column: 'name' | 'size' | 'createdAt' | 'modTime') => {
     if (sortBy === column) {
@@ -233,8 +260,9 @@ export default function FileExplorer({ initialPath, onLogout }: { initialPath: s
     try {
       await uploadFiles(path, Array.from(fileList), setUploadProgress)
       await refresh()
+      toast.success(`Uploaded ${fileList.length} file${fileList.length !== 1 ? 's' : ''}`)
     } catch {
-      setError('Upload failed')
+      toast.error('Upload failed')
     } finally {
       setUploadProgress(null)
     }
@@ -247,8 +275,9 @@ export default function FileExplorer({ initialPath, onLogout }: { initialPath: s
       await createFolder(path, name)
       await refresh()
       window.dispatchEvent(new Event('sidebar-refresh'))
+      toast.success(`Created folder "${name}"`)
     } catch {
-      setError('Failed to create folder')
+      toast.error('Failed to create folder')
     }
   }
 
@@ -276,21 +305,39 @@ export default function FileExplorer({ initialPath, onLogout }: { initialPath: s
       await renameFile(file.path, renameValue)
       await refresh()
       window.dispatchEvent(new Event('sidebar-refresh'))
+      toast.success(`Renamed to "${renameValue}"`)
     } catch {
-      setError('Rename failed')
+      toast.error('Rename failed')
     }
     setRenaming(null)
   }
 
   const handleDelete = async (file: FileItemType) => {
     setContextMenu(null)
-    if (!confirm(`Delete "${file.name}"?`)) return
     try {
       await deleteFile(file.path)
       await refresh()
       window.dispatchEvent(new Event('sidebar-refresh'))
+      toast.info(`"${file.name}" moved to trash`, {
+        label: 'Undo',
+        onClick: async () => {
+          try {
+            const { restoreFromTrash, listTrash } = await import('../api')
+            const trashItems = await listTrash()
+            const match = trashItems.find((t: any) => t.name === file.name)
+            if (match) {
+              await restoreFromTrash(match.id)
+              await refresh()
+              window.dispatchEvent(new Event('sidebar-refresh'))
+              toast.success(`Restored "${file.name}"`)
+            }
+          } catch {
+            toast.error('Failed to undo')
+          }
+        },
+      })
     } catch {
-      setError('Delete failed')
+      toast.error('Delete failed')
     }
   }
 
@@ -357,14 +404,16 @@ export default function FileExplorer({ initialPath, onLogout }: { initialPath: s
     try {
       if (clipboard.mode === 'cut') {
         await moveFiles(clipboard.paths, path)
+        setClipboard(null)
+        toast.success(`Moved ${clipboard.paths.length} item(s)`)
       } else {
         await copyFiles(clipboard.paths, path)
+        toast.success(`Copied ${clipboard.paths.length} item(s)`)
       }
-      if (clipboard.mode === 'cut') setClipboard(null)
       await refresh()
       window.dispatchEvent(new Event('sidebar-refresh'))
     } catch {
-      setError('Paste failed')
+      toast.error('Paste failed')
     }
   }
 
@@ -372,10 +421,11 @@ export default function FileExplorer({ initialPath, onLogout }: { initialPath: s
   const handleExtract = async (file: FileItemType) => {
     setContextMenu(null)
     try {
-      await extractZip(file.path)
+      const result = await extractZip(file.path)
       await refresh()
+      toast.success(`Extracted ${result.extracted} files`)
     } catch {
-      setError('Extract failed')
+      toast.error('Extract failed')
     }
   }
 
@@ -387,8 +437,9 @@ export default function FileExplorer({ initialPath, onLogout }: { initialPath: s
     try {
       await compressFiles(selected.map((f) => f.path), name)
       await refresh()
+      toast.success(`Created ${name}`)
     } catch {
-      setError('Compress failed')
+      toast.error('Compress failed')
     }
   }
 
@@ -647,11 +698,26 @@ export default function FileExplorer({ initialPath, onLogout }: { initialPath: s
 
         {/* File list */}
         <UploadZone onUpload={handleUpload} uploadProgress={uploadProgress}>
-          <div className="w-full p-4 overflow-auto flex-1">
+          <div
+            className="w-full p-4 overflow-auto flex-1 folder-transition"
+            onContextMenu={(e) => {
+              // Only if clicking empty space (not on a file row)
+              if (e.target === e.currentTarget || (e.target as HTMLElement).closest('table') === null && (e.target as HTMLElement).closest('.grid') === null) {
+                if (clipboard) {
+                  e.preventDefault()
+                  setContextMenu({ x: e.clientX, y: e.clientY, file: { name: '', path: '', isDir: false, size: 0, createdAt: 0, modTime: 0 } as FileItemType })
+                }
+              }
+            }}
+          >
           {selectedFiles.size > 0 && (
             <div className="flex items-center gap-3 mb-3 px-2 py-2 bg-blue-50 dark:bg-blue-900/30 rounded-lg border border-blue-200 dark:border-blue-800">
-              <span className="text-sm text-blue-700 font-medium">
+              <span className="text-sm text-blue-700 dark:text-blue-300 font-medium">
                 {selectedFiles.size} item{selectedFiles.size !== 1 ? 's' : ''} selected
+                {(() => {
+                  const totalSize = getSelectedFileObjects().reduce((sum, f) => sum + (f.isDir ? 0 : f.size), 0)
+                  return totalSize > 0 ? ` (${formatSize(totalSize)})` : ''
+                })()}
               </span>
               <button onClick={handleCut} className="text-xs px-2.5 py-1 bg-gray-600 text-white rounded-md hover:bg-gray-700 transition">Cut</button>
               <button onClick={handleCopy} className="text-xs px-2.5 py-1 bg-gray-600 text-white rounded-md hover:bg-gray-700 transition">Copy</button>
@@ -666,7 +732,7 @@ export default function FileExplorer({ initialPath, onLogout }: { initialPath: s
             </div>
           )}
           {loading ? (
-            <div className="text-gray-400 text-center py-12">Loading...</div>
+            <LoadingSkeleton />
           ) : files.length === 0 ? (
             <div className="text-gray-400 text-center py-12">
               <svg className="w-16 h-16 mx-auto mb-3 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -710,7 +776,7 @@ export default function FileExplorer({ initialPath, onLogout }: { initialPath: s
                 </tr>
               </thead>
               <tbody>
-                {sortedFiles.map((file) => (
+                {sortedFiles.slice(0, visibleCount).map((file) => (
                   <tr
                     key={file.path}
                     className={`cursor-pointer group border-b border-gray-100 dark:border-gray-800 last:border-0 ${
@@ -864,6 +930,16 @@ export default function FileExplorer({ initialPath, onLogout }: { initialPath: s
               ))}
             </div>
           )}
+          {sortedFiles.length > visibleCount && (
+            <div className="text-center py-4">
+              <button
+                onClick={() => setVisibleCount((c) => c + 100)}
+                className="px-4 py-2 text-sm text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/30 rounded-lg transition"
+              >
+                Load more ({sortedFiles.length - visibleCount} remaining)
+              </button>
+            </div>
+          )}
           </div>
         </UploadZone>
       </div>
@@ -935,6 +1011,7 @@ export default function FileExplorer({ initialPath, onLogout }: { initialPath: s
       )}
 
       <UpdateToast />
+      <ToastContainer toasts={toast.toasts} onDismiss={toast.removeToast} />
     </div>
   )
 }
