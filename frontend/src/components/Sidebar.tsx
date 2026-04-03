@@ -320,7 +320,7 @@ export default function Sidebar({ currentPath, homeFolder, onNavigate, onContext
                 onContextMenu={(e) => {
                   e.preventDefault()
                   e.stopPropagation()
-                  onContextMenu(e, { name: item.name, path: item.path, isDir: true, size: 0, modTime: 0 })
+                  onContextMenu(e, { name: item.name, path: item.path, isDir: true, size: 0, createdAt: 0, modTime: 0 })
                 }}
                 className={`w-full flex items-center gap-1.5 py-1 px-2 text-left text-sm rounded-md transition group ${
                   currentPath === item.path
