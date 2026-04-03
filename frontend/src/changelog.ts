@@ -1,4 +1,4 @@
-export const APP_VERSION = '1.0.0'
+export const APP_VERSION = '0.0.1'
 
 export interface ChangelogEntry {
   version: string
@@ -8,7 +8,7 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
-    version: '1.0.0',
+    version: '0.0.1',
     date: '2026-04-03',
     changes: [
       'Initial release — lightweight file explorer with Go backend and React frontend',
@@ -26,6 +26,7 @@ export const CHANGELOG: ChangelogEntry[] = [
       'Docker Compose deployment with Syncthing sidecar for cross-device sync',
       'GitHub Actions auto-deploy on push to master',
       'Deploy notification toast — detects server restarts and prompts refresh',
+      'Clickable version badge with changelog modal',
     ],
   },
 ]
