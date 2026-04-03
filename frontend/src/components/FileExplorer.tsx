@@ -266,27 +266,28 @@ export default function FileExplorer({ initialPath, onLogout }: { initialPath: s
             onRefresh={refresh}
             onLogout={handleLogout}
           />
-          <div className="flex items-center gap-1">
+          <div className="flex items-center gap-1.5">
             <button
               onClick={goBack}
               disabled={history.length === 0}
-              className="p-1 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-md transition disabled:opacity-30 disabled:hover:bg-transparent disabled:hover:text-gray-400"
-              title="Back"
+              className="flex items-center gap-1 px-2 py-1 text-xs font-medium text-gray-600 bg-gray-100 rounded-md hover:bg-gray-200 transition disabled:opacity-30 disabled:hover:bg-gray-100"
             >
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
               </svg>
+              Back
             </button>
             <button
               onClick={goUp}
               disabled={path === (user.homeFolder || '/')}
-              className="p-1 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-md transition disabled:opacity-30 disabled:hover:bg-transparent disabled:hover:text-gray-400"
-              title="Up one level"
+              className="flex items-center gap-1 px-2 py-1 text-xs font-medium text-gray-600 bg-gray-100 rounded-md hover:bg-gray-200 transition disabled:opacity-30 disabled:hover:bg-gray-100"
             >
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" />
               </svg>
+              Up
             </button>
+            <span className="text-gray-300">|</span>
             <Breadcrumb path={path} homeFolder={user.homeFolder} onNavigate={navigate} />
           </div>
         </div>
@@ -318,12 +319,12 @@ export default function FileExplorer({ initialPath, onLogout }: { initialPath: s
               <p className="text-sm mt-1">Drop files here or click Upload</p>
             </div>
           ) : viewMode === 'list' ? (
-            <table className="w-full">
+            <table className="w-full" style={{ tableLayout: 'auto' }}>
               <thead>
                 <tr className="text-left text-xs text-gray-500 uppercase tracking-wider border-b border-gray-200">
-                  <th className="pb-2 pl-2 font-medium">Name</th>
-                  <th className="pb-2 font-medium text-right whitespace-nowrap pl-4">Size</th>
-                  <th className="pb-2 font-medium text-right pr-2 whitespace-nowrap pl-4">Modified</th>
+                  <th className="pb-2 pl-2 font-medium" style={{ width: '100%' }}>Name</th>
+                  <th className="pb-2 font-medium text-right whitespace-nowrap pl-6">Size</th>
+                  <th className="pb-2 font-medium text-right pr-2 whitespace-nowrap pl-6">Modified</th>
                 </tr>
               </thead>
               <tbody>
