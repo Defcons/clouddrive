@@ -6,6 +6,10 @@ on:
     branches:
       - master
 
+concurrency:
+  group: deploy
+  cancel-in-progress: true
+
 jobs:
   deploy:
     name: Deploy to server
@@ -20,14 +24,11 @@ jobs:
           username: ${{ secrets.DEPLOY_USER }}
           key: ${{ secrets.DEPLOY_SSH_KEY }}
           script: |
-            whoami
             cd /opt/clouddrive
-            pwd
-            git fetch origin 2>&1
-            git reset --hard origin/master 2>&1
-            git log --oneline -1
+            git fetch origin
+            git reset --hard origin/master
             if [ ! -f .env ]; then
               cp .env.example .env
               echo "WARNING: .env created from example — update credentials!"
             fi
-            docker compose up --build --force-recreate -d 2>&1
+            docker compose up --build --force-recreate -d
