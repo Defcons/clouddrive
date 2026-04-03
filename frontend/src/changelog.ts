@@ -1,4 +1,4 @@
-export const APP_VERSION = '0.0.12'
+export const APP_VERSION = '0.0.13'
 
 export interface ChangelogEntry {
   version: string
@@ -7,6 +7,16 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {
+    version: '0.0.13',
+    date: '2026-04-03',
+    changes: [
+      'Sortable columns — click Name, Size, Created, or Modified headers to sort',
+      'Click again to toggle ascending/descending, arrow indicator shows sort direction',
+      'Directories always sorted first regardless of sort column',
+      'Default sort is by Name ascending',
+    ],
+  },
   {
     version: '0.0.12',
     date: '2026-04-03',

@@ -33,6 +33,32 @@ function formatDate(ms: number): string {
   })
 }
 
+function SortHeader({ label, column, sortBy, sortDir, onClick, className }: {
+  label: string
+  column: 'name' | 'size' | 'createdAt' | 'modTime'
+  sortBy: string
+  sortDir: 'asc' | 'desc'
+  onClick: (col: 'name' | 'size' | 'createdAt' | 'modTime') => void
+  className?: string
+}) {
+  const active = sortBy === column
+  return (
+    <th
+      className={`font-medium cursor-pointer select-none hover:text-gray-700 transition ${className || ''}`}
+      onClick={() => onClick(column)}
+    >
+      <span className="inline-flex items-center gap-1">
+        {label}
+        {active && (
+          <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d={sortDir === 'asc' ? 'M5 15l7-7 7 7' : 'M19 9l-7 7-7-7'} />
+          </svg>
+        )}
+      </span>
+    </th>
+  )
+}
+
 export default function FileExplorer({ initialPath, onLogout }: { initialPath: string; onLogout: () => void }) {
   const [path, setPath] = useState(initialPath || '/')
   const [history, setHistory] = useState<string[]>([])
@@ -49,7 +75,40 @@ export default function FileExplorer({ initialPath, onLogout }: { initialPath: s
   const [shareSafe, setShareSafe] = useState(false)
   const [showChangelog, setShowChangelog] = useState(false)
   const [showSettings, setShowSettings] = useState(false)
+  const [sortBy, setSortBy] = useState<'name' | 'size' | 'createdAt' | 'modTime'>('name')
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc')
   const user = getCurrentUser()
+
+  const handleSort = (column: 'name' | 'size' | 'createdAt' | 'modTime') => {
+    if (sortBy === column) {
+      setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'))
+    } else {
+      setSortBy(column)
+      setSortDir(column === 'name' ? 'asc' : 'desc')
+    }
+  }
+
+  const sortedFiles = [...files].sort((a, b) => {
+    // Directories always first
+    if (a.isDir !== b.isDir) return a.isDir ? -1 : 1
+
+    let cmp = 0
+    switch (sortBy) {
+      case 'name':
+        cmp = a.name.toLowerCase().localeCompare(b.name.toLowerCase())
+        break
+      case 'size':
+        cmp = (a.size || 0) - (b.size || 0)
+        break
+      case 'createdAt':
+        cmp = (a.createdAt || 0) - (b.createdAt || 0)
+        break
+      case 'modTime':
+        cmp = (a.modTime || 0) - (b.modTime || 0)
+        break
+    }
+    return sortDir === 'asc' ? cmp : -cmp
+  })
 
   const refresh = useCallback(async () => {
     setLoading(true)
@@ -463,14 +522,14 @@ export default function FileExplorer({ initialPath, onLogout }: { initialPath: s
                       className="w-3.5 h-3.5 rounded border-gray-300 text-blue-600 focus:ring-blue-500 cursor-pointer"
                     />
                   </th>
-                  <th className="pb-2 pl-2 font-medium">Name</th>
-                  <th className="pb-2 font-medium text-right">Size</th>
-                  <th className="pb-2 font-medium text-right">Created</th>
-                  <th className="pb-2 font-medium text-right pr-2">Modified</th>
+                  <SortHeader label="Name" column="name" sortBy={sortBy} sortDir={sortDir} onClick={handleSort} className="pb-2 pl-2" />
+                  <SortHeader label="Size" column="size" sortBy={sortBy} sortDir={sortDir} onClick={handleSort} className="pb-2 text-right" />
+                  <SortHeader label="Created" column="createdAt" sortBy={sortBy} sortDir={sortDir} onClick={handleSort} className="pb-2 text-right" />
+                  <SortHeader label="Modified" column="modTime" sortBy={sortBy} sortDir={sortDir} onClick={handleSort} className="pb-2 text-right pr-2" />
                 </tr>
               </thead>
               <tbody>
-                {files.map((file) => (
+                {sortedFiles.map((file) => (
                   <tr
                     key={file.path}
                     className={`cursor-pointer group border-b border-gray-100 last:border-0 ${
@@ -544,7 +603,7 @@ export default function FileExplorer({ initialPath, onLogout }: { initialPath: s
             </table>
           ) : (
             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3">
-              {files.map((file) => (
+              {sortedFiles.map((file) => (
                 <div
                   key={file.path}
                   className={`flex flex-col items-center p-3 rounded-lg cursor-pointer group ${
