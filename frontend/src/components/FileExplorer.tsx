@@ -78,6 +78,8 @@ export default function FileExplorer({ initialPath, onLogout }: { initialPath: s
   const [showSettings, setShowSettings] = useState(false)
   const [sortBy, setSortBy] = useState<'name' | 'size' | 'createdAt' | 'modTime'>('name')
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc')
+  const [selectedFiles, setSelectedFiles] = useState<Set<string>>(new Set())
+  const [lastClickedPath, setLastClickedPath] = useState<string | null>(null)
   const user = getCurrentUser()
   const { theme, toggle: toggleTheme } = useTheme()
 
@@ -323,9 +325,6 @@ export default function FileExplorer({ initialPath, onLogout }: { initialPath: s
   }
 
   // Multi-select
-  const [selectedFiles, setSelectedFiles] = useState<Set<string>>(new Set())
-  const [lastClickedPath, setLastClickedPath] = useState<string | null>(null)
-
   const selectRange = (fromPath: string, toPath: string) => {
     const fromIdx = sortedFiles.findIndex((f) => f.path === fromPath)
     const toIdx = sortedFiles.findIndex((f) => f.path === toPath)
