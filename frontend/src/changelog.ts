@@ -1,4 +1,4 @@
-export const APP_VERSION = '0.0.20'
+export const APP_VERSION = '0.0.21'
 
 export interface ChangelogEntry {
   version: string
@@ -7,6 +7,13 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {
+    version: '0.0.21',
+    date: '2026-04-03',
+    changes: [
+      'Checkbox column is now easier to click — entire cell area is clickable, not just the tiny checkbox',
+    ],
+  },
   {
     version: '0.0.20',
     date: '2026-04-03',

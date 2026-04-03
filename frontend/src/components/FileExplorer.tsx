@@ -566,7 +566,7 @@ export default function FileExplorer({ initialPath, onLogout }: { initialPath: s
           ) : viewMode === 'list' ? (
             <table className="w-full" style={{ tableLayout: 'fixed' }}>
               <colgroup>
-                <col style={{ width: '28px' }} />
+                <col style={{ width: '36px' }} />
                 <col />
                 <col style={{ width: '100px' }} />
                 <col style={{ width: '160px' }} />
@@ -574,18 +574,21 @@ export default function FileExplorer({ initialPath, onLogout }: { initialPath: s
               </colgroup>
               <thead>
                 <tr className="text-left text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wider border-b border-gray-200 dark:border-gray-700">
-                  <th className="pb-2 pl-1">
+                  <th
+                    className="pb-2 text-center cursor-pointer"
+                    onClick={() => {
+                      if (selectedFiles.size === files.length) {
+                        setSelectedFiles(new Set())
+                      } else {
+                        setSelectedFiles(new Set(files.map((f) => f.path)))
+                      }
+                    }}
+                  >
                     <input
                       type="checkbox"
                       checked={selectedFiles.size > 0 && selectedFiles.size === files.length}
-                      onChange={() => {
-                        if (selectedFiles.size === files.length) {
-                          setSelectedFiles(new Set())
-                        } else {
-                          setSelectedFiles(new Set(files.map((f) => f.path)))
-                        }
-                      }}
-                      className="w-3.5 h-3.5 rounded border-gray-300 text-blue-600 focus:ring-blue-500 cursor-pointer"
+                      onChange={() => {}}
+                      className="w-3.5 h-3.5 rounded border-gray-300 text-blue-600 focus:ring-blue-500 cursor-pointer pointer-events-none"
                     />
                   </th>
                   <SortHeader label="Name" column="name" sortBy={sortBy} sortDir={sortDir} onClick={handleSort} className="pb-2 pl-2" />
@@ -618,13 +621,15 @@ export default function FileExplorer({ initialPath, onLogout }: { initialPath: s
                       }
                     }}
                   >
-                    <td className="py-2 pl-1">
+                    <td
+                      className="py-2 cursor-pointer text-center"
+                      onClick={(e) => { e.stopPropagation(); handleCheckboxToggle(e, file) }}
+                    >
                       <input
                         type="checkbox"
                         checked={selectedFiles.has(file.path)}
-                        onClick={(e) => handleCheckboxToggle(e, file)}
                         onChange={() => {}}
-                        className="w-3.5 h-3.5 rounded border-gray-300 text-blue-600 focus:ring-blue-500 cursor-pointer"
+                        className="w-3.5 h-3.5 rounded border-gray-300 text-blue-600 focus:ring-blue-500 cursor-pointer pointer-events-none"
                       />
                     </td>
                     <td className="py-2 pl-2">
