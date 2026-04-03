@@ -1,4 +1,4 @@
-export const APP_VERSION = '0.0.24'
+export const APP_VERSION = '0.0.25'
 
 export interface ChangelogEntry {
   version: string
@@ -7,6 +7,15 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {
+    version: '0.0.25',
+    date: '2026-04-03',
+    changes: [
+      'Fix drag & drop flickering in dark mode — uses inline style instead of Tailwind dark classes',
+      'Fix rename input invisible in dark mode — proper dark background and text color',
+      'Fix right-click empty space to paste — dedicated click area below file list with paste-only menu',
+    ],
+  },
   {
     version: '0.0.24',
     date: '2026-04-03',

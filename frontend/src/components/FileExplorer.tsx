@@ -698,18 +698,7 @@ export default function FileExplorer({ initialPath, onLogout }: { initialPath: s
 
         {/* File list */}
         <UploadZone onUpload={handleUpload} uploadProgress={uploadProgress}>
-          <div
-            className="w-full p-4 overflow-auto flex-1 folder-transition"
-            onContextMenu={(e) => {
-              // Only if clicking empty space (not on a file row)
-              if (e.target === e.currentTarget || (e.target as HTMLElement).closest('table') === null && (e.target as HTMLElement).closest('.grid') === null) {
-                if (clipboard) {
-                  e.preventDefault()
-                  setContextMenu({ x: e.clientX, y: e.clientY, file: { name: '', path: '', isDir: false, size: 0, createdAt: 0, modTime: 0 } as FileItemType })
-                }
-              }
-            }}
-          >
+          <div className="w-full p-4 overflow-auto flex-1 folder-transition">
           {selectedFiles.size > 0 && (
             <div className="flex items-center gap-3 mb-3 px-2 py-2 bg-blue-50 dark:bg-blue-900/30 rounded-lg border border-blue-200 dark:border-blue-800">
               <span className="text-sm text-blue-700 dark:text-blue-300 font-medium">
@@ -789,14 +778,14 @@ export default function FileExplorer({ initialPath, onLogout }: { initialPath: s
                       e.dataTransfer.effectAllowed = 'move'
                     }}
                     onDragOver={(e) => {
-                      if (file.isDir) { e.preventDefault(); e.currentTarget.classList.add('bg-blue-100', 'dark:bg-blue-900/40') }
+                      if (file.isDir) { e.preventDefault(); e.currentTarget.style.backgroundColor = 'rgba(59,130,246,0.15)' }
                     }}
                     onDragLeave={(e) => {
-                      e.currentTarget.classList.remove('bg-blue-100', 'dark:bg-blue-900/40')
+                      e.currentTarget.style.backgroundColor = ''
                     }}
                     onDrop={(e) => {
                       e.preventDefault()
-                      e.currentTarget.classList.remove('bg-blue-100', 'dark:bg-blue-900/40')
+                      e.currentTarget.style.backgroundColor = ''
                       if (!file.isDir) return
                       const data = e.dataTransfer.getData('application/clouddrive-paths')
                       if (data) {
@@ -852,7 +841,7 @@ export default function FileExplorer({ initialPath, onLogout }: { initialPath: s
                               if (e.key === 'Enter') handleRenameSubmit(file)
                               if (e.key === 'Escape') setRenaming(null)
                             }}
-                            className="px-1.5 py-0.5 border border-blue-400 rounded text-sm focus:outline-none focus:ring-1 focus:ring-blue-500"
+                            className="px-1.5 py-0.5 border border-blue-400 rounded text-sm focus:outline-none focus:ring-1 focus:ring-blue-500 bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-200"
                             onClick={(e) => e.stopPropagation()}
                           />
                         ) : (
@@ -918,7 +907,7 @@ export default function FileExplorer({ initialPath, onLogout }: { initialPath: s
                         if (e.key === 'Enter') handleRenameSubmit(file)
                         if (e.key === 'Escape') setRenaming(null)
                       }}
-                      className="w-full px-1 py-0.5 border border-blue-400 rounded text-xs text-center focus:outline-none focus:ring-1 focus:ring-blue-500"
+                      className="w-full px-1 py-0.5 border border-blue-400 rounded text-xs text-center focus:outline-none focus:ring-1 focus:ring-blue-500 bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-200"
                       onClick={(e) => e.stopPropagation()}
                     />
                   ) : (
@@ -930,6 +919,16 @@ export default function FileExplorer({ initialPath, onLogout }: { initialPath: s
               ))}
             </div>
           )}
+          {/* Empty space — right-click to paste */}
+          <div
+            className="min-h-[100px] flex-1"
+            onContextMenu={(e) => {
+              if (clipboard) {
+                e.preventDefault()
+                setContextMenu({ x: e.clientX, y: e.clientY, file: { name: '__paste__', path: '', isDir: false, size: 0, createdAt: 0, modTime: 0 } as FileItemType })
+              }
+            }}
+          />
           {sortedFiles.length > visibleCount && (
             <div className="text-center py-4">
               <button
@@ -958,7 +957,23 @@ export default function FileExplorer({ initialPath, onLogout }: { initialPath: s
           onClose={() => setContextMenu(null)}
         />
       )}
-      {contextMenu && selectedFiles.size <= 1 && (
+      {contextMenu && selectedFiles.size <= 1 && contextMenu.file.name === '__paste__' && clipboard && (
+        <div
+          className="fixed z-50 bg-white dark:bg-gray-800 rounded-lg shadow-xl border border-gray-200 dark:border-gray-700 py-1 w-44"
+          style={{ left: Math.min(contextMenu.x, window.innerWidth - 180), top: Math.min(contextMenu.y, window.innerHeight - 60) }}
+        >
+          <button
+            onClick={() => { handlePaste(); setContextMenu(null) }}
+            className="w-full text-left px-3 py-2 text-sm hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center gap-2"
+          >
+            <svg className="w-4 h-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+            </svg>
+            Paste ({clipboard.paths.length} {clipboard.mode === 'cut' ? 'cut' : 'copied'})
+          </button>
+        </div>
+      )}
+      {contextMenu && selectedFiles.size <= 1 && contextMenu.file.name !== '__paste__' && (
         <ContextMenu
           x={contextMenu.x}
           y={contextMenu.y}

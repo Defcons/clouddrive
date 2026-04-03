@@ -57,15 +57,15 @@ function SidebarItem({
         onDragOver={(e) => {
           e.preventDefault()
           e.stopPropagation()
-          e.currentTarget.classList.add('bg-blue-100', 'dark:bg-blue-900/40')
+          e.currentTarget.style.backgroundColor = 'rgba(59,130,246,0.15)'
         }}
         onDragLeave={(e) => {
-          e.currentTarget.classList.remove('bg-blue-100', 'dark:bg-blue-900/40')
+          e.currentTarget.style.backgroundColor = ''
         }}
         onDrop={(e) => {
           e.preventDefault()
           e.stopPropagation()
-          e.currentTarget.classList.remove('bg-blue-100', 'dark:bg-blue-900/40')
+          e.currentTarget.style.backgroundColor = ''
           const data = e.dataTransfer.getData('application/clouddrive-paths')
           if (data) {
             const event = new CustomEvent('clouddrive-drop', { detail: { paths: JSON.parse(data), destination: node.path } })
