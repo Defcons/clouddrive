@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import type { FileItem } from '../types'
-import { getPreviewUrl, getPreviewType, fetchTextPreview } from '../api'
+import { getPreviewUrl, getPreviewType, fetchTextPreview, downloadFile } from '../api'
 
 interface Props {
   file: FileItem
@@ -40,14 +40,25 @@ export default function PreviewModal({ file, onClose }: Props) {
         {/* Header */}
         <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200 dark:border-gray-700 flex-shrink-0">
           <h2 className="text-sm font-medium text-gray-800 dark:text-gray-200 truncate">{file.name}</h2>
+          <div className="flex items-center gap-1">
+            <button
+              onClick={() => downloadFile(file.path)}
+              className="flex items-center gap-1 px-2.5 py-1 text-xs font-medium text-gray-600 dark:text-gray-300 bg-gray-100 dark:bg-gray-700 rounded-md hover:bg-gray-200 dark:hover:bg-gray-600 transition"
+            >
+              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+              </svg>
+              Download
+            </button>
           <button
             onClick={onClose}
-            className="p-1 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition"
+            className="p-1 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition"
           >
             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
             </svg>
           </button>
+          </div>
         </div>
 
         {/* Content */}
