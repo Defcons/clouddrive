@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import type { FileItem as FileItemType, ViewMode } from '../types'
-import { listFiles, downloadFile, uploadFiles, createFolder, renameFile, deleteFile, logout, isPreviewable } from '../api'
+import { listFiles, downloadFile, uploadFiles, createFolder, renameFile, deleteFile, logout, isPreviewable, addQuickAccess } from '../api'
 import Breadcrumb from './Breadcrumb'
 import Toolbar from './Toolbar'
 import FileIcon from './FileIcon'
@@ -8,6 +8,7 @@ import ContextMenu from './ContextMenu'
 import UploadZone from './UploadZone'
 import PreviewModal from './PreviewModal'
 import ShareModal from './ShareModal'
+import Sidebar from './Sidebar'
 
 function formatSize(bytes: number): string {
   if (bytes === 0) return '—'
@@ -135,6 +136,12 @@ export default function FileExplorer({ onLogout }: { onLogout: () => void }) {
     setPreviewFile(file)
   }
 
+  const handleQuickAccess = (file: FileItemType) => {
+    setContextMenu(null)
+    addQuickAccess(file.name, file.path)
+    window.dispatchEvent(new Event('quickaccess-updated'))
+  }
+
   const handleShare = (file: FileItemType, safe = false) => {
     setContextMenu(null)
     setShareSafe(safe)
@@ -186,9 +193,13 @@ export default function FileExplorer({ onLogout }: { onLogout: () => void }) {
         </div>
       )}
 
-      {/* File list */}
-      <UploadZone onUpload={handleUpload} uploadProgress={uploadProgress}>
-        <div className="max-w-7xl mx-auto w-full p-4 overflow-auto flex-1">
+      {/* Main area with sidebar */}
+      <div className="flex flex-1 min-h-0">
+        <Sidebar currentPath={path} onNavigate={navigate} />
+
+        {/* File list */}
+        <UploadZone onUpload={handleUpload} uploadProgress={uploadProgress}>
+          <div className="w-full p-4 overflow-auto flex-1">
           {loading ? (
             <div className="text-gray-400 text-center py-12">Loading...</div>
           ) : files.length === 0 ? (
@@ -292,8 +303,9 @@ export default function FileExplorer({ onLogout }: { onLogout: () => void }) {
               ))}
             </div>
           )}
-        </div>
-      </UploadZone>
+          </div>
+        </UploadZone>
+      </div>
 
       {/* Context menu */}
       {contextMenu && (
@@ -308,6 +320,7 @@ export default function FileExplorer({ onLogout }: { onLogout: () => void }) {
           onDownload={() => handleDownload(contextMenu.file)}
           onRename={() => handleRenameStart(contextMenu.file)}
           onDelete={() => handleDelete(contextMenu.file)}
+          onQuickAccess={() => handleQuickAccess(contextMenu.file)}
           onClose={() => setContextMenu(null)}
         />
       )}
