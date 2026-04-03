@@ -49,7 +49,7 @@ function SidebarItem({
         onContextMenu={(e) => {
           e.preventDefault()
           e.stopPropagation()
-          onContextMenu(e, { name: node.name, path: node.path, isDir: true, size: 0, modTime: 0 })
+          onContextMenu(e, { name: node.name, path: node.path, isDir: true, size: 0, createdAt: 0, modTime: 0 })
         }}
         className={`w-full flex items-center gap-1.5 py-1 px-2 text-left text-sm rounded-md transition group ${
           isActive
