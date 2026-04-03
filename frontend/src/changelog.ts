@@ -1,4 +1,4 @@
-export const APP_VERSION = '0.0.15'
+export const APP_VERSION = '0.0.16'
 
 export interface ChangelogEntry {
   version: string
@@ -7,6 +7,15 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {
+    version: '0.0.16',
+    date: '2026-04-03',
+    changes: [
+      'Smart sidebar collapse — auto-expanded folders collapse when you navigate away',
+      'Manually expanded folders (clicked the arrow) stay open until you manually collapse them',
+      'Expand All / Collapse All resets all tracking',
+    ],
+  },
   {
     version: '0.0.15',
     date: '2026-04-03',
