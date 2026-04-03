@@ -1,11 +1,12 @@
 import { useState, useEffect, useCallback } from 'react'
 import type { FileItem as FileItemType, ViewMode } from '../types'
-import { listFiles, downloadFile, uploadFiles, createFolder, renameFile, deleteFile, logout } from '../api'
+import { listFiles, downloadFile, uploadFiles, createFolder, renameFile, deleteFile, logout, isPreviewable } from '../api'
 import Breadcrumb from './Breadcrumb'
 import Toolbar from './Toolbar'
 import FileIcon from './FileIcon'
 import ContextMenu from './ContextMenu'
 import UploadZone from './UploadZone'
+import PreviewModal from './PreviewModal'
 
 function formatSize(bytes: number): string {
   if (bytes === 0) return '—'
@@ -34,6 +35,7 @@ export default function FileExplorer({ onLogout }: { onLogout: () => void }) {
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; file: FileItemType } | null>(null)
   const [renaming, setRenaming] = useState<string | null>(null)
   const [renameValue, setRenameValue] = useState('')
+  const [previewFile, setPreviewFile] = useState<FileItemType | null>(null)
 
   const refresh = useCallback(async () => {
     setLoading(true)
@@ -123,6 +125,11 @@ export default function FileExplorer({ onLogout }: { onLogout: () => void }) {
   const handleContextMenu = (e: React.MouseEvent, file: FileItemType) => {
     e.preventDefault()
     setContextMenu({ x: e.clientX, y: e.clientY, file })
+  }
+
+  const handlePreview = (file: FileItemType) => {
+    setContextMenu(null)
+    setPreviewFile(file)
   }
 
   const handleLogout = () => {
@@ -285,11 +292,17 @@ export default function FileExplorer({ onLogout }: { onLogout: () => void }) {
           x={contextMenu.x}
           y={contextMenu.y}
           isDir={contextMenu.file.isDir}
+          canPreview={isPreviewable(contextMenu.file.name)}
+          onPreview={() => handlePreview(contextMenu.file)}
           onDownload={() => handleDownload(contextMenu.file)}
           onRename={() => handleRenameStart(contextMenu.file)}
           onDelete={() => handleDelete(contextMenu.file)}
           onClose={() => setContextMenu(null)}
         />
+      )}
+
+      {previewFile && (
+        <PreviewModal file={previewFile} onClose={() => setPreviewFile(null)} />
       )}
     </div>
   )

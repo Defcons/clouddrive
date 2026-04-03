@@ -3,14 +3,16 @@ import { useEffect, useRef } from 'react'
 interface Props {
   x: number
   y: number
+  onPreview?: () => void
   onDownload: () => void
   onRename: () => void
   onDelete: () => void
   onClose: () => void
   isDir: boolean
+  canPreview: boolean
 }
 
-export default function ContextMenu({ x, y, onDownload, onRename, onDelete, onClose, isDir }: Props) {
+export default function ContextMenu({ x, y, onPreview, onDownload, onRename, onDelete, onClose, isDir, canPreview }: Props) {
   const ref = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -27,12 +29,24 @@ export default function ContextMenu({ x, y, onDownload, onRename, onDelete, onCl
   const style: React.CSSProperties = {
     position: 'fixed',
     left: Math.min(x, window.innerWidth - 180),
-    top: Math.min(y, window.innerHeight - 160),
+    top: Math.min(y, window.innerHeight - 200),
     zIndex: 50,
   }
 
   return (
     <div ref={ref} style={style} className="bg-white rounded-lg shadow-xl border border-gray-200 py-1 w-44">
+      {!isDir && canPreview && (
+        <button
+          onClick={onPreview}
+          className="w-full text-left px-3 py-2 text-sm hover:bg-gray-100 flex items-center gap-2"
+        >
+          <svg className="w-4 h-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+          </svg>
+          Preview
+        </button>
+      )}
       {!isDir && (
         <button
           onClick={onDownload}

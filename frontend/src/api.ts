@@ -112,6 +112,43 @@ export async function deleteFile(path: string) {
   return res.json()
 }
 
+export function getPreviewUrl(path: string): string {
+  const token = getToken()
+  return `${API_BASE}/files/preview?path=${encodeURIComponent(path)}&token=${encodeURIComponent(token || '')}`
+}
+
+const PREVIEWABLE_EXTENSIONS = new Set([
+  'jpg', 'jpeg', 'png', 'gif', 'webp', 'svg', 'bmp', 'ico',
+  'pdf',
+  'mp4', 'webm', 'ogg',
+  'mp3', 'wav', 'flac', 'aac',
+  'txt', 'md', 'json', 'yml', 'yaml', 'xml', 'csv', 'log',
+  'js', 'ts', 'jsx', 'tsx', 'css', 'html', 'go', 'py', 'sh', 'bat',
+])
+
+export function isPreviewable(name: string): boolean {
+  const ext = name.split('.').pop()?.toLowerCase() || ''
+  return PREVIEWABLE_EXTENSIONS.has(ext)
+}
+
+export function getPreviewType(name: string): 'image' | 'pdf' | 'video' | 'audio' | 'text' | null {
+  const ext = name.split('.').pop()?.toLowerCase() || ''
+  if (['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg', 'bmp', 'ico'].includes(ext)) return 'image'
+  if (ext === 'pdf') return 'pdf'
+  if (['mp4', 'webm', 'ogg'].includes(ext)) return 'video'
+  if (['mp3', 'wav', 'flac', 'aac'].includes(ext)) return 'audio'
+  if (['txt', 'md', 'json', 'yml', 'yaml', 'xml', 'csv', 'log', 'js', 'ts', 'jsx', 'tsx', 'css', 'html', 'go', 'py', 'sh', 'bat'].includes(ext)) return 'text'
+  return null
+}
+
+export async function fetchTextPreview(path: string): Promise<string> {
+  const res = await fetch(`${API_BASE}/files/preview?path=${encodeURIComponent(path)}`, {
+    headers: authHeaders(),
+  })
+  if (!res.ok) throw new Error('Failed to load preview')
+  return res.text()
+}
+
 export async function getDiskUsage() {
   const res = await fetch(`${API_BASE}/disk`, {
     headers: authHeaders(),

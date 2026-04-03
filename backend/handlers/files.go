@@ -138,6 +138,45 @@ func (h *FileHandler) Download(w http.ResponseWriter, r *http.Request) {
 	io.Copy(w, f)
 }
 
+func (h *FileHandler) Preview(w http.ResponseWriter, r *http.Request) {
+	filePath := r.URL.Query().Get("path")
+	if filePath == "" {
+		http.Error(w, "path required", http.StatusBadRequest)
+		return
+	}
+
+	absPath, err := h.safePath(filePath)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	info, err := os.Stat(absPath)
+	if err != nil || info.IsDir() {
+		http.Error(w, "File not found", http.StatusNotFound)
+		return
+	}
+
+	ext := filepath.Ext(absPath)
+	mimeType := mime.TypeByExtension(ext)
+	if mimeType == "" {
+		mimeType = "application/octet-stream"
+	}
+
+	w.Header().Set("Content-Type", mimeType)
+	w.Header().Set("Content-Disposition", fmt.Sprintf(`inline; filename="%s"`, info.Name()))
+	w.Header().Set("Content-Length", fmt.Sprintf("%d", info.Size()))
+	w.Header().Set("Cache-Control", "private, max-age=3600")
+
+	f, err := os.Open(absPath)
+	if err != nil {
+		http.Error(w, "Cannot open file", http.StatusInternalServerError)
+		return
+	}
+	defer f.Close()
+	io.Copy(w, f)
+}
+
 func (h *FileHandler) Upload(w http.ResponseWriter, r *http.Request) {
 	targetDir := r.URL.Query().Get("path")
 	if targetDir == "" {

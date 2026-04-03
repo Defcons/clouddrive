@@ -54,6 +54,7 @@ func main() {
 	// Files (protected)
 	mux.HandleFunc("GET /api/files", authMiddleware.Wrap(fileHandler.List))
 	mux.HandleFunc("GET /api/files/download", authMiddleware.Wrap(fileHandler.Download))
+	mux.HandleFunc("GET /api/files/preview", authMiddleware.Wrap(fileHandler.Preview))
 	mux.HandleFunc("POST /api/files/upload", authMiddleware.Wrap(fileHandler.Upload))
 	mux.HandleFunc("POST /api/files/mkdir", authMiddleware.Wrap(fileHandler.Mkdir))
 	mux.HandleFunc("POST /api/files/rename", authMiddleware.Wrap(fileHandler.Rename))

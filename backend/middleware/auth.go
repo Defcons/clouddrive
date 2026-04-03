@@ -17,15 +17,21 @@ func NewAuthMiddleware(jwtSecret string) *AuthMiddleware {
 
 func (m *AuthMiddleware) Wrap(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		// Check Authorization header first, then fall back to ?token= query param
+		tokenString := ""
 		authHeader := r.Header.Get("Authorization")
-		if authHeader == "" {
-			http.Error(w, "Authorization required", http.StatusUnauthorized)
-			return
+		if authHeader != "" {
+			tokenString = strings.TrimPrefix(authHeader, "Bearer ")
+			if tokenString == authHeader {
+				http.Error(w, "Invalid authorization format", http.StatusUnauthorized)
+				return
+			}
+		} else {
+			tokenString = r.URL.Query().Get("token")
 		}
 
-		tokenString := strings.TrimPrefix(authHeader, "Bearer ")
-		if tokenString == authHeader {
-			http.Error(w, "Invalid authorization format", http.StatusUnauthorized)
+		if tokenString == "" {
+			http.Error(w, "Authorization required", http.StatusUnauthorized)
 			return
 		}
 
