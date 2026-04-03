@@ -15,6 +15,7 @@ COPY backend/ ./
 # Copy built frontend into Go embed directory
 RUN mkdir -p static
 COPY --from=frontend-build /app/frontend/dist/ ./static/
+RUN go mod tidy
 RUN CGO_ENABLED=0 GOOS=linux go build -o /clouddrive .
 
 # Stage 3: Final image
