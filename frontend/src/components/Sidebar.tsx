@@ -54,6 +54,24 @@ function SidebarItem({
           e.stopPropagation()
           onContextMenu(e, { name: node.name, path: node.path, isDir: true, size: 0, createdAt: 0, modTime: 0 })
         }}
+        onDragOver={(e) => {
+          e.preventDefault()
+          e.stopPropagation()
+          e.currentTarget.classList.add('bg-blue-100', 'dark:bg-blue-900/40')
+        }}
+        onDragLeave={(e) => {
+          e.currentTarget.classList.remove('bg-blue-100', 'dark:bg-blue-900/40')
+        }}
+        onDrop={(e) => {
+          e.preventDefault()
+          e.stopPropagation()
+          e.currentTarget.classList.remove('bg-blue-100', 'dark:bg-blue-900/40')
+          const data = e.dataTransfer.getData('application/clouddrive-paths')
+          if (data) {
+            const event = new CustomEvent('clouddrive-drop', { detail: { paths: JSON.parse(data), destination: node.path } })
+            window.dispatchEvent(event)
+          }
+        }}
         className={`w-full flex items-center gap-1.5 py-1 px-2 text-left text-sm rounded-md transition group ${
           isActive
             ? 'bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400 font-medium'
