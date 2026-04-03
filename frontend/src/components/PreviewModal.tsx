@@ -34,12 +34,12 @@ export default function PreviewModal({ file, onClose }: Props) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70" onClick={onClose}>
       <div
-        className="bg-white rounded-xl shadow-2xl max-w-5xl w-full mx-4 max-h-[90vh] flex flex-col overflow-hidden"
+        className="bg-white dark:bg-gray-800 rounded-xl shadow-2xl max-w-5xl w-full mx-4 max-h-[90vh] flex flex-col overflow-hidden"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
-        <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200 flex-shrink-0">
-          <h2 className="text-sm font-medium text-gray-800 truncate">{file.name}</h2>
+        <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200 dark:border-gray-700 flex-shrink-0">
+          <h2 className="text-sm font-medium text-gray-800 dark:text-gray-200 truncate">{file.name}</h2>
           <button
             onClick={onClose}
             className="p-1 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition"

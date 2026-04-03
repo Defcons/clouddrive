@@ -39,7 +39,7 @@ export default function UpdateToast() {
         visible ? 'top-20 opacity-100' : '-top-20 opacity-0 pointer-events-none'
       }`}
     >
-      <div className="bg-white border border-blue-200 rounded-xl shadow-lg px-5 py-3 flex items-center gap-3">
+      <div className="bg-white dark:bg-gray-800 border border-blue-200 dark:border-blue-800 rounded-xl shadow-lg px-5 py-3 flex items-center gap-3">
         <div className="w-2 h-2 bg-blue-500 rounded-full animate-pulse" />
         <span className="text-sm text-gray-700">
           A new update has been deployed

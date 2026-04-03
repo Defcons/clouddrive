@@ -1,4 +1,4 @@
-export const APP_VERSION = '0.0.16'
+export const APP_VERSION = '0.0.17'
 
 export interface ChangelogEntry {
   version: string
@@ -7,6 +7,15 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {
+    version: '0.0.17',
+    date: '2026-04-03',
+    changes: [
+      'Dark mode / Light mode toggle — sun/moon icon in the header',
+      'Respects system preference on first visit, remembers choice in localStorage',
+      'All components styled for dark mode: sidebar, file list, modals, context menus, login page, toolbar, toasts',
+    ],
+  },
   {
     version: '0.0.16',
     date: '2026-04-03',

@@ -17,11 +17,11 @@ export default function ChangelogModal({ onClose }: Props) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={onClose}>
       <div
-        className="bg-white rounded-xl shadow-2xl w-full max-w-lg mx-4 max-h-[80vh] flex flex-col overflow-hidden"
+        className="bg-white dark:bg-gray-800 rounded-xl shadow-2xl w-full max-w-lg mx-4 max-h-[80vh] flex flex-col overflow-hidden"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
-        <div className="flex items-center justify-between px-5 py-4 border-b border-gray-200 flex-shrink-0">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-gray-200 dark:border-gray-700 flex-shrink-0">
           <div className="flex items-center gap-2">
             <h2 className="text-base font-semibold text-gray-800">Changelog</h2>
             <span className="px-2 py-0.5 bg-blue-50 text-blue-600 text-xs font-mono rounded-md">
