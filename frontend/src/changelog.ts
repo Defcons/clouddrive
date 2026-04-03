@@ -1,4 +1,4 @@
-export const APP_VERSION = '0.0.8'
+export const APP_VERSION = '0.0.9'
 
 export interface ChangelogEntry {
   version: string
@@ -7,6 +7,18 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {
+    version: '0.0.9',
+    date: '2026-04-03',
+    changes: [
+      'Back and Up navigation buttons in breadcrumb bar',
+      'Mouse back button (button 4) navigates back in folder history instead of browser',
+      'Fixed column spacing — Size and Modified columns sit closer to filenames',
+      'Download option now available for both files and folders (folders download as .zip)',
+      'Quick Access is now per-user — each user has their own pinned folders',
+      'Sidebar refreshes automatically when creating, renaming, or deleting folders',
+    ],
+  },
   {
     version: '0.0.8',
     date: '2026-04-03',
