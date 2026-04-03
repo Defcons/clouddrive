@@ -1,4 +1,4 @@
-export const APP_VERSION = '0.0.2'
+export const APP_VERSION = '0.0.3'
 
 export interface ChangelogEntry {
   version: string
@@ -7,6 +7,15 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {
+    version: '0.0.3',
+    date: '2026-04-03',
+    changes: [
+      'Move credentials to .env file — secrets no longer stored in git',
+      'Added .env.example as template for new deployments',
+      'Deploy pipeline auto-creates .env from example if missing',
+    ],
+  },
   {
     version: '0.0.2',
     date: '2026-04-03',
