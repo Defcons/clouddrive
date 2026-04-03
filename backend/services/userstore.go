@@ -137,6 +137,7 @@ func (s *UserStore) ChangePassword(username, currentPassword, newPassword string
 				return fmt.Errorf("failed to hash password: %w", err)
 			}
 			s.users[i].Password = string(hash)
+			s.users[i].PwVersion++
 			s.mu.Unlock()
 			err = s.save()
 			s.mu.Lock()
@@ -144,6 +145,17 @@ func (s *UserStore) ChangePassword(username, currentPassword, newPassword string
 		}
 	}
 	return fmt.Errorf("user not found")
+}
+
+func (s *UserStore) GetPwVersion(username string) int {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	for _, u := range s.users {
+		if u.Username == username {
+			return u.PwVersion
+		}
+	}
+	return 0
 }
 
 // HashPassword is a utility for generating bcrypt hashes

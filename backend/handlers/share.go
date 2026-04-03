@@ -2,6 +2,8 @@ package handlers
 
 import (
 	"archive/zip"
+	"clouddrive/middleware"
+	"clouddrive/services"
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
@@ -27,15 +29,59 @@ type ShareEntry struct {
 }
 
 type ShareHandler struct {
-	root   string
-	shares map[string]*ShareEntry
-	mu     sync.RWMutex
+	root      string
+	storePath string
+	shares    map[string]*ShareEntry
+	mu        sync.RWMutex
+	audit     *services.AuditLogger
 }
 
-func NewShareHandler(root string) *ShareHandler {
-	return &ShareHandler{
-		root:   root,
-		shares: make(map[string]*ShareEntry),
+func NewShareHandler(root string, audit *services.AuditLogger) *ShareHandler {
+	h := &ShareHandler{
+		root:      root,
+		audit:     audit,
+		storePath: filepath.Join(root, ".shares.json"),
+		shares:    make(map[string]*ShareEntry),
+	}
+	h.load()
+	h.cleanExpired()
+	return h
+}
+
+func (h *ShareHandler) load() {
+	data, err := os.ReadFile(h.storePath)
+	if err != nil {
+		return // file doesn't exist yet
+	}
+	json.Unmarshal(data, &h.shares)
+}
+
+func (h *ShareHandler) save() {
+	data, err := json.MarshalIndent(h.shares, "", "  ")
+	if err != nil {
+		return
+	}
+	tmpPath := h.storePath + ".tmp"
+	if err := os.WriteFile(tmpPath, data, 0600); err != nil {
+		return
+	}
+	os.Rename(tmpPath, h.storePath)
+}
+
+func (h *ShareHandler) cleanExpired() {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+
+	now := time.Now().UnixMilli()
+	changed := false
+	for token, entry := range h.shares {
+		if entry.ExpiresAt < now {
+			delete(h.shares, token)
+			changed = true
+		}
+	}
+	if changed {
+		h.save()
 	}
 }
 
@@ -131,7 +177,16 @@ func (h *ShareHandler) Create(w http.ResponseWriter, r *http.Request) {
 
 	h.mu.Lock()
 	h.shares[token] = entry
+	h.save()
 	h.mu.Unlock()
+
+	if h.audit != nil {
+		shareType := "share"
+		if password != "" {
+			shareType = "safe share"
+		}
+		h.audit.Log("SHARE", middleware.GetUsername(r), getClientIP(r), fmt.Sprintf("created %s for %s", shareType, req.Path))
+	}
 
 	resp := map[string]string{
 		"token": token,
@@ -174,6 +229,7 @@ func (h *ShareHandler) Revoke(w http.ResponseWriter, r *http.Request) {
 
 	h.mu.Lock()
 	delete(h.shares, req.Token)
+	h.save()
 	h.mu.Unlock()
 
 	w.Header().Set("Content-Type", "application/json")
@@ -203,6 +259,7 @@ func (h *ShareHandler) Download(w http.ResponseWriter, r *http.Request) {
 	if time.Now().UnixMilli() > entry.ExpiresAt {
 		h.mu.Lock()
 		delete(h.shares, token)
+		h.save()
 		h.mu.Unlock()
 		http.Error(w, "Share link has expired", http.StatusGone)
 		return

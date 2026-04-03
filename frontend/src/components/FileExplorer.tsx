@@ -13,6 +13,7 @@ import Sidebar from './Sidebar'
 import UpdateToast from './UpdateToast'
 import ChangelogModal from './ChangelogModal'
 import SettingsModal from './SettingsModal'
+import AuditLogModal from './AuditLogModal'
 import { APP_VERSION } from '../changelog'
 import { getCurrentUser } from '../api'
 import { useTheme } from '../hooks/useTheme'
@@ -76,6 +77,7 @@ export default function FileExplorer({ initialPath, onLogout }: { initialPath: s
   const [shareSafe, setShareSafe] = useState(false)
   const [showChangelog, setShowChangelog] = useState(false)
   const [showSettings, setShowSettings] = useState(false)
+  const [showAuditLog, setShowAuditLog] = useState(false)
   const [sortBy, setSortBy] = useState<'name' | 'size' | 'createdAt' | 'modTime'>('name')
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc')
   const [selectedFiles, setSelectedFiles] = useState<Set<string>>(new Set())
@@ -424,11 +426,11 @@ export default function FileExplorer({ initialPath, onLogout }: { initialPath: s
   return (
     <div className="h-screen flex flex-col bg-gray-50 dark:bg-gray-900">
       {/* Header */}
-      <header className="bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 px-4 py-3 flex-shrink-0">
-        <div className="max-w-7xl mx-auto space-y-2">
+      <header className="bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 px-4 py-2 flex-shrink-0">
+        <div className="space-y-1.5">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
-              <h1 className="text-lg font-bold text-gray-800">CloudDrive</h1>
+              <h1 className="text-lg font-bold text-gray-800 dark:text-gray-100">CloudDrive</h1>
               <button
                 onClick={() => setShowChangelog(true)}
                 className="px-2 py-0.5 border border-gray-300 text-gray-500 text-xs font-mono rounded-md hover:border-blue-400 hover:text-blue-600 transition"
@@ -453,6 +455,17 @@ export default function FileExplorer({ initialPath, onLogout }: { initialPath: s
                   </svg>
                 )}
               </button>
+              {user.role === 'admin' && (
+                <button
+                  onClick={() => setShowAuditLog(true)}
+                  className="p-1 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-md transition"
+                  title="Audit Log"
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+                  </svg>
+                </button>
+              )}
               <button
                 onClick={() => setShowSettings(true)}
                 className="p-1 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-md transition"
@@ -761,6 +774,10 @@ export default function FileExplorer({ initialPath, onLogout }: { initialPath: s
 
       {showSettings && (
         <SettingsModal onClose={() => setShowSettings(false)} />
+      )}
+
+      {showAuditLog && (
+        <AuditLogModal onClose={() => setShowAuditLog(false)} />
       )}
 
       <UpdateToast />

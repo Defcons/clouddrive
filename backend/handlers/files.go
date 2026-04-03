@@ -19,6 +19,7 @@ import (
 type FileHandler struct {
 	root      string
 	permStore *services.PermissionStore
+	audit     *services.AuditLogger
 }
 
 type FileInfo struct {
@@ -45,12 +46,18 @@ func getCreationTime(info os.FileInfo) int64 {
 	return info.ModTime().UnixMilli()
 }
 
-func NewFileHandler(root string, permStore ...*services.PermissionStore) *FileHandler {
-	h := &FileHandler{root: root}
-	if len(permStore) > 0 {
-		h.permStore = permStore[0]
+func NewFileHandler(root string, permStore *services.PermissionStore, audit *services.AuditLogger) *FileHandler {
+	return &FileHandler{root: root, permStore: permStore, audit: audit}
+}
+
+func getClientIP(r *http.Request) string {
+	if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
+		return xff
 	}
-	return h
+	if xri := r.Header.Get("X-Real-IP"); xri != "" {
+		return xri
+	}
+	return r.RemoteAddr
 }
 
 // safePath resolves and validates a path is within the storage root.
@@ -356,6 +363,10 @@ func (h *FileHandler) Upload(w http.ResponseWriter, r *http.Request) {
 		uploaded = append(uploaded, fh.Filename)
 	}
 
+	if h.audit != nil && len(uploaded) > 0 {
+		h.audit.Log("UPLOAD", middleware.GetUsername(r), getClientIP(r), fmt.Sprintf("uploaded %d file(s) to %s: %s", len(uploaded), targetDir, strings.Join(uploaded, ", ")))
+	}
+
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{
 		"uploaded": uploaded,
@@ -395,6 +406,10 @@ func (h *FileHandler) Mkdir(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if h.audit != nil {
+		h.audit.Log("MKDIR", middleware.GetUsername(r), getClientIP(r), fmt.Sprintf("created folder %s in %s", req.Name, parentPath))
+	}
+
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]string{"created": req.Name})
 }
@@ -432,6 +447,10 @@ func (h *FileHandler) Rename(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if h.audit != nil {
+		h.audit.Log("RENAME", middleware.GetUsername(r), getClientIP(r), fmt.Sprintf("renamed %s to %s", req.OldPath, req.NewName))
+	}
+
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]string{"renamed": req.NewName})
 }
@@ -464,6 +483,10 @@ func (h *FileHandler) Delete(w http.ResponseWriter, r *http.Request) {
 	if err := os.RemoveAll(absPath); err != nil {
 		http.Error(w, "Failed to delete", http.StatusInternalServerError)
 		return
+	}
+
+	if h.audit != nil {
+		h.audit.Log("DELETE", middleware.GetUsername(r), getClientIP(r), fmt.Sprintf("deleted %s", filePath))
 	}
 
 	w.Header().Set("Content-Type", "application/json")

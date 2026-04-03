@@ -71,43 +71,58 @@ func main() {
 	}
 
 	permStore := services.NewPermissionStore(storageRoot)
+	auditLog := services.NewAuditLogger(storageRoot)
 
 	// Rate limiter: 5 attempts per 2 minutes, 5 minute lockout
 	loginLimiter := middleware.NewRateLimiter(5, 2*time.Minute, 5*time.Minute)
 
-	authHandler := handlers.NewAuthHandler(userStore, jwtSecret, loginLimiter)
-	authMiddleware := middleware.NewAuthMiddleware(jwtSecret)
-	fileHandler := handlers.NewFileHandler(storageRoot, permStore)
+	csrfMiddleware := middleware.NewCSRFMiddleware()
+
+	authHandler := handlers.NewAuthHandler(userStore, jwtSecret, loginLimiter, auditLog)
+	authMiddleware := middleware.NewAuthMiddleware(jwtSecret, userStore)
+	fileHandler := handlers.NewFileHandler(storageRoot, permStore, auditLog)
 	diskHandler := handlers.NewDiskHandler(storageRoot)
-	shareHandler := handlers.NewShareHandler(storageRoot)
+	shareHandler := handlers.NewShareHandler(storageRoot, auditLog)
 	versionHandler := handlers.NewVersionHandler()
-	permHandler := handlers.NewPermissionsHandler(permStore)
+	permHandler := handlers.NewPermissionsHandler(permStore, auditLog)
+	auditHandler := handlers.NewAuditHandler(auditLog)
 
 	mux := http.NewServeMux()
+
+	// Helper: auth + CSRF protection for state-changing endpoints
+	protectedWrite := func(handler http.HandlerFunc) http.HandlerFunc {
+		return authMiddleware.Wrap(csrfMiddleware.Protect(handler))
+	}
 
 	// Auth
 	mux.HandleFunc("POST /api/auth/login", loginLimiter.WrapLogin(authHandler.Login))
 	mux.HandleFunc("GET /api/auth/check", authMiddleware.Wrap(authHandler.Check))
-	mux.HandleFunc("POST /api/auth/change-password", authMiddleware.Wrap(authHandler.ChangePassword))
+	mux.HandleFunc("POST /api/auth/change-password", protectedWrite(authHandler.ChangePassword))
 
-	// Files (protected)
+	// CSRF token endpoint
+	mux.HandleFunc("GET /api/csrf", authMiddleware.Wrap(csrfMiddleware.GetToken))
+
+	// Files (protected — reads use auth only, writes use auth + CSRF)
 	mux.HandleFunc("GET /api/files", authMiddleware.Wrap(fileHandler.List))
 	mux.HandleFunc("GET /api/files/download", authMiddleware.Wrap(fileHandler.Download))
 	mux.HandleFunc("GET /api/files/preview", authMiddleware.Wrap(fileHandler.Preview))
-	mux.HandleFunc("POST /api/files/upload", authMiddleware.Wrap(fileHandler.Upload))
-	mux.HandleFunc("POST /api/files/mkdir", authMiddleware.Wrap(fileHandler.Mkdir))
-	mux.HandleFunc("POST /api/files/rename", authMiddleware.Wrap(fileHandler.Rename))
-	mux.HandleFunc("DELETE /api/files", authMiddleware.Wrap(fileHandler.Delete))
+	mux.HandleFunc("POST /api/files/upload", protectedWrite(fileHandler.Upload))
+	mux.HandleFunc("POST /api/files/mkdir", protectedWrite(fileHandler.Mkdir))
+	mux.HandleFunc("POST /api/files/rename", protectedWrite(fileHandler.Rename))
+	mux.HandleFunc("DELETE /api/files", protectedWrite(fileHandler.Delete))
 
 	// Permissions (protected)
-	mux.HandleFunc("POST /api/files/permissions", authMiddleware.Wrap(permHandler.SetPrivate))
-	mux.HandleFunc("DELETE /api/files/permissions", authMiddleware.Wrap(permHandler.RemovePrivate))
+	mux.HandleFunc("POST /api/files/permissions", protectedWrite(permHandler.SetPrivate))
+	mux.HandleFunc("DELETE /api/files/permissions", protectedWrite(permHandler.RemovePrivate))
 	mux.HandleFunc("GET /api/files/permissions", authMiddleware.Wrap(permHandler.GetPermission))
 
 	// Shares (management — protected)
-	mux.HandleFunc("POST /api/shares", authMiddleware.Wrap(shareHandler.Create))
+	mux.HandleFunc("POST /api/shares", protectedWrite(shareHandler.Create))
 	mux.HandleFunc("GET /api/shares", authMiddleware.Wrap(shareHandler.List))
-	mux.HandleFunc("POST /api/shares/revoke", authMiddleware.Wrap(shareHandler.Revoke))
+	mux.HandleFunc("POST /api/shares/revoke", protectedWrite(shareHandler.Revoke))
+
+	// Audit log (admin only)
+	mux.HandleFunc("GET /api/audit", authMiddleware.Wrap(auditHandler.GetLogs))
 
 	// Version (public — for update notifier polling)
 	mux.HandleFunc("GET /api/version", versionHandler.Info)
@@ -145,7 +160,7 @@ func main() {
 		AllowCredentials: true,
 	})
 
-	handler := c.Handler(mux)
+	handler := middleware.SecureHeaders(c.Handler(mux))
 
 	log.Printf("CloudDrive starting on :%s (storage: %s)", port, storageRoot)
 	log.Fatal(http.ListenAndServe(":"+port, handler))
