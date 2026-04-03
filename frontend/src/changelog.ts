@@ -1,4 +1,4 @@
-export const APP_VERSION = '0.0.25'
+export const APP_VERSION = '0.0.26'
 
 export interface ChangelogEntry {
   version: string
@@ -7,6 +7,17 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {
+    version: '0.0.26',
+    date: '2026-04-03',
+    changes: [
+      'Image thumbnails — grid view shows actual image previews, list view shows small thumbnails for image files',
+      'Storage usage shows "X GB used of Y GB" with actual filesystem capacity',
+      'Hover storage bar to see per-folder breakdown and free space',
+      'Paste area is now visible as a dashed border zone below files when clipboard has items',
+      'Click or right-click the paste area to paste — text prompt shows what will be pasted',
+    ],
+  },
   {
     version: '0.0.25',
     date: '2026-04-03',
