@@ -5,6 +5,7 @@ import Breadcrumb from './Breadcrumb'
 import Toolbar from './Toolbar'
 import FileIcon from './FileIcon'
 import ContextMenu from './ContextMenu'
+import BulkContextMenu from './BulkContextMenu'
 import UploadZone from './UploadZone'
 import PreviewModal from './PreviewModal'
 import ShareModal from './ShareModal'
@@ -217,15 +218,109 @@ export default function FileExplorer({ initialPath, onLogout }: { initialPath: s
     onLogout()
   }
 
-  const handleClick = (file: FileItemType) => {
+  const handleClick = (e: React.MouseEvent, file: FileItemType) => {
+    // If shift/ctrl held, handle multi-select instead
+    if (e.shiftKey || e.ctrlKey || e.metaKey) {
+      handleSelectionClick(e, file)
+      return
+    }
     if (file.isDir) {
       navigate(file.path)
+    } else {
+      handlePreview(file)
     }
   }
 
   const handleDoubleClick = (file: FileItemType) => {
     if (!file.isDir) {
       handleDownload(file)
+    }
+  }
+
+  // Multi-select
+  const [selectedFiles, setSelectedFiles] = useState<Set<string>>(new Set())
+
+  const handleSelectionClick = (e: React.MouseEvent, file: FileItemType) => {
+    if (e.shiftKey && selectedFiles.size > 0) {
+      // Shift-click: select range
+      const lastSelected = Array.from(selectedFiles).pop()!
+      const lastIdx = files.findIndex((f) => f.path === lastSelected)
+      const currentIdx = files.findIndex((f) => f.path === file.path)
+      if (lastIdx >= 0 && currentIdx >= 0) {
+        const start = Math.min(lastIdx, currentIdx)
+        const end = Math.max(lastIdx, currentIdx)
+        const newSelection = new Set(selectedFiles)
+        for (let i = start; i <= end; i++) {
+          newSelection.add(files[i].path)
+        }
+        setSelectedFiles(newSelection)
+      }
+    } else {
+      // Ctrl/Cmd click: toggle individual
+      const newSelection = new Set(selectedFiles)
+      if (newSelection.has(file.path)) {
+        newSelection.delete(file.path)
+      } else {
+        newSelection.add(file.path)
+      }
+      setSelectedFiles(newSelection)
+    }
+  }
+
+  const handleCheckboxToggle = (e: React.MouseEvent, file: FileItemType) => {
+    e.stopPropagation()
+    const newSelection = new Set(selectedFiles)
+    if (newSelection.has(file.path)) {
+      newSelection.delete(file.path)
+    } else {
+      newSelection.add(file.path)
+    }
+    setSelectedFiles(newSelection)
+  }
+
+  const getSelectedFileObjects = (): FileItemType[] => {
+    return files.filter((f) => selectedFiles.has(f.path))
+  }
+
+  const handleBulkDownload = async () => {
+    setContextMenu(null)
+    const selected = getSelectedFileObjects()
+    for (const file of selected) {
+      try {
+        await downloadFile(file.path)
+      } catch {
+        setError(`Failed to download ${file.name}`)
+      }
+    }
+    setSelectedFiles(new Set())
+  }
+
+  const handleBulkDelete = async () => {
+    setContextMenu(null)
+    const selected = getSelectedFileObjects()
+    if (!confirm(`Delete ${selected.length} item${selected.length !== 1 ? 's' : ''}?`)) return
+    for (const file of selected) {
+      try {
+        await deleteFile(file.path)
+      } catch {
+        setError(`Failed to delete ${file.name}`)
+      }
+    }
+    setSelectedFiles(new Set())
+    await refresh()
+    window.dispatchEvent(new Event('sidebar-refresh'))
+  }
+
+  // Clear selection when path changes
+  useEffect(() => {
+    setSelectedFiles(new Set())
+  }, [path])
+
+  // Right-click on multi-selection
+  const handleMultiContextMenu = (e: React.MouseEvent) => {
+    if (selectedFiles.size > 1) {
+      e.preventDefault()
+      setContextMenu({ x: e.clientX, y: e.clientY, file: { name: `${selectedFiles.size} items`, path: '', isDir: false, size: 0, createdAt: 0, modTime: 0 } as FileItemType })
     }
   }
 
@@ -308,6 +403,31 @@ export default function FileExplorer({ initialPath, onLogout }: { initialPath: s
         {/* File list */}
         <UploadZone onUpload={handleUpload} uploadProgress={uploadProgress}>
           <div className="w-full p-4 overflow-auto flex-1">
+          {selectedFiles.size > 0 && (
+            <div className="flex items-center gap-3 mb-3 px-2 py-2 bg-blue-50 rounded-lg border border-blue-200">
+              <span className="text-sm text-blue-700 font-medium">
+                {selectedFiles.size} item{selectedFiles.size !== 1 ? 's' : ''} selected
+              </span>
+              <button
+                onClick={handleBulkDownload}
+                className="text-xs px-2.5 py-1 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition"
+              >
+                Download
+              </button>
+              <button
+                onClick={handleBulkDelete}
+                className="text-xs px-2.5 py-1 bg-red-500 text-white rounded-md hover:bg-red-600 transition"
+              >
+                Delete
+              </button>
+              <button
+                onClick={() => setSelectedFiles(new Set())}
+                className="text-xs text-blue-600 hover:text-blue-800 ml-auto"
+              >
+                Clear selection
+              </button>
+            </div>
+          )}
           {loading ? (
             <div className="text-gray-400 text-center py-12">Loading...</div>
           ) : files.length === 0 ? (
@@ -321,6 +441,7 @@ export default function FileExplorer({ initialPath, onLogout }: { initialPath: s
           ) : viewMode === 'list' ? (
             <table className="w-full" style={{ tableLayout: 'fixed' }}>
               <colgroup>
+                <col style={{ width: '28px' }} />
                 <col />
                 <col style={{ width: '100px' }} />
                 <col style={{ width: '160px' }} />
@@ -328,6 +449,20 @@ export default function FileExplorer({ initialPath, onLogout }: { initialPath: s
               </colgroup>
               <thead>
                 <tr className="text-left text-xs text-gray-500 uppercase tracking-wider border-b border-gray-200">
+                  <th className="pb-2 pl-1">
+                    <input
+                      type="checkbox"
+                      checked={selectedFiles.size > 0 && selectedFiles.size === files.length}
+                      onChange={() => {
+                        if (selectedFiles.size === files.length) {
+                          setSelectedFiles(new Set())
+                        } else {
+                          setSelectedFiles(new Set(files.map((f) => f.path)))
+                        }
+                      }}
+                      className="w-3.5 h-3.5 rounded border-gray-300 text-blue-600 focus:ring-blue-500 cursor-pointer"
+                    />
+                  </th>
                   <th className="pb-2 pl-2 font-medium">Name</th>
                   <th className="pb-2 font-medium text-right">Size</th>
                   <th className="pb-2 font-medium text-right">Created</th>
@@ -338,11 +473,28 @@ export default function FileExplorer({ initialPath, onLogout }: { initialPath: s
                 {files.map((file) => (
                   <tr
                     key={file.path}
-                    className="hover:bg-gray-50 cursor-pointer group border-b border-gray-100 last:border-0"
-                    onClick={() => handleClick(file)}
+                    className={`cursor-pointer group border-b border-gray-100 last:border-0 ${
+                      selectedFiles.has(file.path) ? 'bg-blue-50' : 'hover:bg-gray-50'
+                    }`}
+                    onClick={(e) => handleClick(e, file)}
                     onDoubleClick={() => handleDoubleClick(file)}
-                    onContextMenu={(e) => handleContextMenu(e, file)}
+                    onContextMenu={(e) => {
+                      if (selectedFiles.size > 1 && selectedFiles.has(file.path)) {
+                        handleMultiContextMenu(e)
+                      } else {
+                        handleContextMenu(e, file)
+                      }
+                    }}
                   >
+                    <td className="py-2 pl-1">
+                      <input
+                        type="checkbox"
+                        checked={selectedFiles.has(file.path)}
+                        onClick={(e) => handleCheckboxToggle(e, file)}
+                        onChange={() => {}}
+                        className="w-3.5 h-3.5 rounded border-gray-300 text-blue-600 focus:ring-blue-500 cursor-pointer"
+                      />
+                    </td>
                     <td className="py-2 pl-2">
                       <div className="flex items-center gap-2.5">
                         <div className="relative flex-shrink-0">
@@ -395,9 +547,18 @@ export default function FileExplorer({ initialPath, onLogout }: { initialPath: s
               {files.map((file) => (
                 <div
                   key={file.path}
-                  className="flex flex-col items-center p-3 rounded-lg hover:bg-gray-100 cursor-pointer group"
+                  className={`flex flex-col items-center p-3 rounded-lg cursor-pointer group ${
+                    selectedFiles.has(file.path) ? 'bg-blue-50 ring-1 ring-blue-200' : 'hover:bg-gray-100'
+                  }`}
+                  onClick={(e) => handleClick(e, file)}
                   onDoubleClick={() => handleDoubleClick(file)}
-                  onContextMenu={(e) => handleContextMenu(e, file)}
+                  onContextMenu={(e) => {
+                    if (selectedFiles.size > 1 && selectedFiles.has(file.path)) {
+                      handleMultiContextMenu(e)
+                    } else {
+                      handleContextMenu(e, file)
+                    }
+                  }}
                 >
                   <div className="w-12 h-12 flex items-center justify-center mb-2">
                     {file.isDir ? (
@@ -437,7 +598,17 @@ export default function FileExplorer({ initialPath, onLogout }: { initialPath: s
       </div>
 
       {/* Context menu */}
-      {contextMenu && (
+      {contextMenu && selectedFiles.size > 1 && (
+        <BulkContextMenu
+          x={contextMenu.x}
+          y={contextMenu.y}
+          count={selectedFiles.size}
+          onDownload={handleBulkDownload}
+          onDelete={handleBulkDelete}
+          onClose={() => setContextMenu(null)}
+        />
+      )}
+      {contextMenu && selectedFiles.size <= 1 && (
         <ContextMenu
           x={contextMenu.x}
           y={contextMenu.y}
