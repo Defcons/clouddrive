@@ -23,7 +23,7 @@ export default function ChangelogModal({ onClose }: Props) {
         {/* Header */}
         <div className="flex items-center justify-between px-5 py-4 border-b border-gray-200 dark:border-gray-700 flex-shrink-0">
           <div className="flex items-center gap-2">
-            <h2 className="text-base font-semibold text-gray-800">Changelog</h2>
+            <h2 className="text-base font-semibold text-gray-800 dark:text-gray-200">Changelog</h2>
             <span className="px-2 py-0.5 bg-blue-50 text-blue-600 text-xs font-mono rounded-md">
               v{APP_VERSION}
             </span>
@@ -43,12 +43,12 @@ export default function ChangelogModal({ onClose }: Props) {
           {CHANGELOG.map((entry) => (
             <div key={entry.version}>
               <div className="flex items-center gap-2 mb-2">
-                <span className="text-sm font-semibold text-gray-800">v{entry.version}</span>
+                <span className="text-sm font-semibold text-gray-800 dark:text-gray-200">v{entry.version}</span>
                 <span className="text-xs text-gray-400">{entry.date}</span>
               </div>
               <ul className="space-y-1.5">
                 {entry.changes.map((change, i) => (
-                  <li key={i} className="flex gap-2 text-sm text-gray-600">
+                  <li key={i} className="flex gap-2 text-sm text-gray-600 dark:text-gray-300">
                     <span className="text-blue-400 mt-1 flex-shrink-0">
                       <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 8 8">
                         <circle cx="4" cy="4" r="3" />
