@@ -6,12 +6,11 @@ services:
     ports:
       - "8080:8080"
     volumes:
-      - /mnt/storage:/data
+      - /data:/data
+    env_file:
+      - .env
     environment:
       - STORAGE_ROOT=/data
-      - JWT_SECRET=REDACTED
-      - USERNAME=Martin
-      - PASSWORD=REDACTED
       - PORT=8080
 
   syncthing:
@@ -24,7 +23,7 @@ services:
       - "22000:22000/udp"  # Sync protocol (QUIC)
       - "21027:21027/udp"  # Discovery
     volumes:
-      - /mnt/storage:/var/syncthing/data
+      - /data:/var/syncthing/data
       - syncthing_config:/var/syncthing/config
     environment:
       - PUID=1000

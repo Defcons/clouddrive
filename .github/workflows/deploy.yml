@@ -23,4 +23,8 @@ jobs:
             cd /opt/clouddrive
             git fetch origin
             git reset --hard origin/master
+            if [ ! -f .env ]; then
+              cp .env.example .env
+              echo "WARNING: .env created from example — update credentials!"
+            fi
             docker compose up --build --force-recreate -d
