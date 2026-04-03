@@ -31,11 +31,11 @@ func main() {
 		jwtSecret = "change-me-in-production"
 	}
 
-	username := os.Getenv("USERNAME")
+	username := os.Getenv("CLOUDDRIVE_USER")
 	if username == "" {
 		username = "admin"
 	}
-	password := os.Getenv("PASSWORD")
+	password := os.Getenv("CLOUDDRIVE_PASS")
 	if password == "" {
 		password = "admin"
 	}
