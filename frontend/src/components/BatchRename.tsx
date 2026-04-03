@@ -21,7 +21,7 @@ export default function BatchRename({ files, onRename, onClose }: Props) {
 
   const getNewName = (name: string): string => {
     if (mode === 'findReplace' && find) {
-      return name.replaceAll(find, replace)
+      return name.split(find).join(replace)
     }
     if (mode === 'addFix') {
       const ext = name.includes('.') ? '.' + name.split('.').pop() : ''
