@@ -11,23 +11,28 @@ interface Props {
 export default function ShareModal({ file, safe, onClose }: Props) {
   const [shareUrl, setShareUrl] = useState<string | null>(null)
   const [password, setPassword] = useState<string | null>(null)
-  const [loading, setLoading] = useState(true)
+  const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [copied, setCopied] = useState(false)
+  const [expiresIn, setExpiresIn] = useState(168) // 7 days in hours
+  const [mode, setMode] = useState<'download' | 'collaborate'>('download')
+  const [generated, setGenerated] = useState(false)
 
-  useEffect(() => {
+  const handleGenerate = () => {
     setLoading(true)
-    createShare(file.path, safe)
+    setError('')
+    createShare(file.path, safe, expiresIn, mode)
       .then((data) => {
         const fullUrl = `${window.location.origin}${data.url}`
         setShareUrl(fullUrl)
         if (data.password) {
           setPassword(data.password)
         }
+        setGenerated(true)
       })
       .catch(() => setError('Failed to generate share link'))
       .finally(() => setLoading(false))
-  }, [file.path, safe])
+  }
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
@@ -93,15 +98,64 @@ export default function ShareModal({ file, safe, onClose }: Props) {
 
         {/* Content */}
         <div className="px-5 py-4">
-          <p className="text-sm text-gray-600 mb-1">
-            {file.isDir ? 'Folder' : 'File'}: <span className="font-medium text-gray-800">{file.name}</span>
-          </p>
-          <p className="text-xs text-gray-400 mb-4">
-            {file.isDir ? 'Will be downloaded as a .zip' : 'Direct download link'} — expires in 7 days
-            {safe && ' — password protected'}
+          <p className="text-sm text-gray-600 dark:text-gray-400 mb-1">
+            {file.isDir ? 'Folder' : 'File'}: <span className="font-medium text-gray-800 dark:text-gray-200">{file.name}</span>
           </p>
 
-          {loading && <div className="text-gray-400 text-sm py-4 text-center">Generating link...</div>}
+          {!generated && (
+            <div className="space-y-3 mb-4">
+              {file.isDir && (
+                <div>
+                  <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Access type</label>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => setMode('download')}
+                      className={`flex-1 px-3 py-2 text-xs rounded-lg border transition ${mode === 'download' ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400' : 'border-gray-200 dark:border-gray-600 text-gray-600 dark:text-gray-400'}`}
+                    >
+                      <div className="font-medium">Download only</div>
+                      <div className="text-[10px] mt-0.5 opacity-70">Browse and download files</div>
+                    </button>
+                    <button
+                      onClick={() => setMode('collaborate')}
+                      className={`flex-1 px-3 py-2 text-xs rounded-lg border transition ${mode === 'collaborate' ? 'border-green-500 bg-green-50 dark:bg-green-900/30 text-green-700 dark:text-green-400' : 'border-gray-200 dark:border-gray-600 text-gray-600 dark:text-gray-400'}`}
+                    >
+                      <div className="font-medium">Collaborate</div>
+                      <div className="text-[10px] mt-0.5 opacity-70">Browse, download and upload</div>
+                    </button>
+                  </div>
+                </div>
+              )}
+              <div>
+                <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Expires in</label>
+                <select
+                  value={expiresIn}
+                  onChange={(e) => setExpiresIn(Number(e.target.value))}
+                  className="w-full px-3 py-1.5 text-sm border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-200 rounded-lg"
+                >
+                  <option value={1}>1 hour</option>
+                  <option value={24}>1 day</option>
+                  <option value={168}>7 days</option>
+                  <option value={720}>30 days</option>
+                  <option value={8760}>1 year</option>
+                </select>
+              </div>
+              <p className="text-xs text-gray-400">
+                {file.isDir ? 'Recipients can browse and download individual files' : 'Direct download link'}
+                {safe && ' — password protected'}
+              </p>
+              <button
+                onClick={handleGenerate}
+                disabled={loading}
+                className={`w-full py-2 rounded-lg text-sm font-medium transition ${
+                  safe ? 'bg-green-600 hover:bg-green-700 text-white' : 'bg-blue-600 hover:bg-blue-700 text-white'
+                } disabled:opacity-50`}
+              >
+                {loading ? 'Generating...' : 'Generate Link'}
+              </button>
+            </div>
+          )}
+
+          {loading && generated && <div className="text-gray-400 text-sm py-4 text-center">Generating link...</div>}
 
           {error && <div className="text-red-500 text-sm py-4 text-center">{error}</div>}
 

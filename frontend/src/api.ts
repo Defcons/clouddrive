@@ -222,11 +222,11 @@ export async function removeFolderPrivate(path: string) {
   return res.json()
 }
 
-export async function createShare(path: string, safe = false): Promise<{ token: string; url: string; password?: string }> {
+export async function createShare(path: string, safe = false, expiresIn = 168, mode = 'download'): Promise<{ token: string; url: string; password?: string }> {
   const res = await fetch(`${API_BASE}/shares`, {
     method: 'POST',
     headers: await writeHeaders(),
-    body: JSON.stringify({ path, safe }),
+    body: JSON.stringify({ path, safe, expiresIn, mode }),
   })
   if (!res.ok) throw new Error('Failed to create share')
   return res.json()

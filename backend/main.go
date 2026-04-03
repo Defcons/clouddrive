@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/rs/cors"
@@ -155,8 +156,15 @@ func main() {
 	// Version (public — for update notifier polling)
 	mux.HandleFunc("GET /api/version", versionHandler.Info)
 
-	// Share download (public — no auth, GET + POST for password form)
-	mux.HandleFunc("/share/", shareHandler.Download)
+	// Share (public — no auth)
+	mux.HandleFunc("/share/", func(w http.ResponseWriter, r *http.Request) {
+		// Route upload requests to the upload handler
+		if r.Method == "POST" && strings.Contains(r.URL.Path, "/upload") {
+			shareHandler.Upload(w, r)
+			return
+		}
+		shareHandler.Download(w, r)
+	})
 
 	// Disk
 	mux.HandleFunc("GET /api/disk", authMiddleware.Wrap(diskHandler.Usage))

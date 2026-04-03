@@ -19,13 +19,17 @@ import (
 )
 
 type ShareEntry struct {
-	Token     string `json:"token"`
-	FilePath  string `json:"filePath"`
-	FileName  string `json:"fileName"`
-	IsDir     bool   `json:"isDir"`
-	Password  string `json:"password,omitempty"`
-	CreatedAt int64  `json:"createdAt"`
-	ExpiresAt int64  `json:"expiresAt"`
+	Token      string `json:"token"`
+	FilePath   string `json:"filePath"`
+	FileName   string `json:"fileName"`
+	IsDir      bool   `json:"isDir"`
+	Mode       string `json:"mode"` // "download" or "collaborate"
+	Password   string `json:"password,omitempty"`
+	CreatedBy  string `json:"createdBy"`
+	CreatedAt  int64  `json:"createdAt"`
+	ExpiresAt  int64  `json:"expiresAt"`
+	Downloads  int    `json:"downloads"`
+	LastAccess int64  `json:"lastAccess,omitempty"`
 }
 
 type ShareHandler struct {
@@ -126,6 +130,7 @@ func (h *ShareHandler) Create(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		Path      string `json:"path"`
 		Safe      bool   `json:"safe"`
+		Mode      string `json:"mode"`      // "download" or "collaborate"
 		ExpiresIn int    `json:"expiresIn"` // hours, 0 = 7 days default
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -165,12 +170,19 @@ func (h *ShareHandler) Create(w http.ResponseWriter, r *http.Request) {
 		expiresIn = 7 * 24 * time.Hour // 7 days default
 	}
 
+	mode := req.Mode
+	if mode == "" {
+		mode = "download"
+	}
+
 	entry := &ShareEntry{
 		Token:     token,
 		FilePath:  req.Path,
 		FileName:  info.Name(),
 		IsDir:     info.IsDir(),
+		Mode:      mode,
 		Password:  password,
+		CreatedBy: middleware.GetUsername(r),
 		CreatedAt: time.Now().UnixMilli(),
 		ExpiresAt: time.Now().Add(expiresIn).UnixMilli(),
 	}
@@ -236,12 +248,17 @@ func (h *ShareHandler) Revoke(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(map[string]string{"revoked": req.Token})
 }
 
-// Download serves the shared file (NO auth — public endpoint)
-// For password-protected shares, accepts ?p=<password> or shows a password form
+// Download serves the shared file/folder (NO auth — public endpoint)
 func (h *ShareHandler) Download(w http.ResponseWriter, r *http.Request) {
-	// Extract token from URL: /share/{token}
-	token := strings.TrimPrefix(r.URL.Path, "/share/")
-	token = strings.Split(token, "/")[0]
+	// Extract token and subpath from URL: /share/{token}/subpath...
+	remainder := strings.TrimPrefix(r.URL.Path, "/share/")
+	parts := strings.SplitN(remainder, "/", 2)
+	token := parts[0]
+	subPath := ""
+	if len(parts) > 1 {
+		subPath = parts[1]
+	}
+
 	if token == "" {
 		http.Error(w, "Invalid share link", http.StatusBadRequest)
 		return
@@ -268,13 +285,10 @@ func (h *ShareHandler) Download(w http.ResponseWriter, r *http.Request) {
 	// Check password if required
 	if entry.Password != "" {
 		providedPassword := r.URL.Query().Get("p")
-
-		// POST form submission
 		if r.Method == "POST" {
 			r.ParseForm()
 			providedPassword = r.FormValue("password")
 		}
-
 		if providedPassword == "" {
 			h.servePasswordPage(w, token, entry.FileName, false)
 			return
@@ -285,23 +299,54 @@ func (h *ShareHandler) Download(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	// Track access
+	h.mu.Lock()
+	entry.LastAccess = time.Now().UnixMilli()
+	entry.Downloads++
+	h.save()
+	h.mu.Unlock()
+
 	absPath, err := h.safePath(entry.FilePath)
 	if err != nil {
 		http.Error(w, "File not found", http.StatusNotFound)
 		return
 	}
 
-	info, err := os.Stat(absPath)
+	// If subPath, resolve within the shared directory
+	targetPath := absPath
+	if subPath != "" {
+		targetPath = filepath.Join(absPath, filepath.Clean(subPath))
+		// Prevent traversal outside shared path
+		if !strings.HasPrefix(targetPath, absPath) {
+			http.Error(w, "Access denied", http.StatusForbidden)
+			return
+		}
+	}
+
+	info, err := os.Stat(targetPath)
 	if err != nil {
 		http.Error(w, "File not found", http.StatusNotFound)
 		return
 	}
 
-	if info.IsDir() {
-		h.serveDirectoryAsZip(w, absPath, entry.FileName)
-	} else {
-		h.serveFile(w, absPath, info)
+	// ?download=1 forces download (for files or zip of folder)
+	if r.URL.Query().Get("download") == "1" {
+		if info.IsDir() {
+			h.serveDirectoryAsZip(w, targetPath, info.Name())
+		} else {
+			h.serveFile(w, targetPath, info)
+		}
+		return
 	}
+
+	// Single file — serve directly
+	if !info.IsDir() {
+		h.serveFile(w, targetPath, info)
+		return
+	}
+
+	// Directory — serve browseable HTML
+	h.serveBrowsePage(w, token, entry, targetPath, subPath)
 }
 
 func (h *ShareHandler) servePasswordPage(w http.ResponseWriter, token string, fileName string, wrongPassword bool) {
@@ -408,4 +453,251 @@ func (h *ShareHandler) serveDirectoryAsZip(w http.ResponseWriter, absPath string
 		io.Copy(writer, f)
 		return nil
 	})
+}
+
+// Upload handles file uploads to collaborative shared folders (NO auth — public)
+func (h *ShareHandler) Upload(w http.ResponseWriter, r *http.Request) {
+	if r.Method != "POST" {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	// Extract token from URL: /share/{token}/upload
+	remainder := strings.TrimPrefix(r.URL.Path, "/share/")
+	parts := strings.SplitN(remainder, "/", 2)
+	token := parts[0]
+
+	h.mu.RLock()
+	entry, exists := h.shares[token]
+	h.mu.RUnlock()
+
+	if !exists || time.Now().UnixMilli() > entry.ExpiresAt {
+		http.Error(w, "Share link not found or expired", http.StatusNotFound)
+		return
+	}
+
+	if entry.Mode != "collaborate" {
+		http.Error(w, "This share does not allow uploads", http.StatusForbidden)
+		return
+	}
+
+	// Check password
+	if entry.Password != "" {
+		p := r.URL.Query().Get("p")
+		if p != entry.Password {
+			http.Error(w, "Invalid password", http.StatusUnauthorized)
+			return
+		}
+	}
+
+	absPath, err := h.safePath(entry.FilePath)
+	if err != nil {
+		http.Error(w, "Error", http.StatusInternalServerError)
+		return
+	}
+
+	// Handle optional subpath
+	subPath := r.URL.Query().Get("path")
+	targetDir := absPath
+	if subPath != "" {
+		targetDir = filepath.Join(absPath, filepath.Clean(subPath))
+		if !strings.HasPrefix(targetDir, absPath) {
+			http.Error(w, "Access denied", http.StatusForbidden)
+			return
+		}
+	}
+
+	r.ParseMultipartForm(500 << 20)
+	files := r.MultipartForm.File["files"]
+	if len(files) == 0 {
+		http.Error(w, "No files provided", http.StatusBadRequest)
+		return
+	}
+
+	uploaded := 0
+	for _, fh := range files {
+		src, err := fh.Open()
+		if err != nil {
+			continue
+		}
+		dstPath := filepath.Join(targetDir, filepath.Base(fh.Filename))
+		dst, err := os.Create(dstPath)
+		if err != nil {
+			src.Close()
+			continue
+		}
+		io.Copy(dst, src)
+		src.Close()
+		dst.Close()
+		uploaded++
+	}
+
+	if h.audit != nil {
+		h.audit.Log("SHARE_UPLOAD", "anonymous", r.RemoteAddr, fmt.Sprintf("uploaded %d file(s) via share %s", uploaded, token))
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]int{"uploaded": uploaded})
+}
+
+func (h *ShareHandler) serveBrowsePage(w http.ResponseWriter, token string, entry *ShareEntry, absPath string, subPath string) {
+	entries, err := os.ReadDir(absPath)
+	if err != nil {
+		http.Error(w, "Cannot read directory", http.StatusInternalServerError)
+		return
+	}
+
+	type fileEntry struct {
+		Name  string
+		IsDir bool
+		Size  string
+		Link  string
+	}
+
+	var items []fileEntry
+	for _, e := range entries {
+		if strings.HasPrefix(e.Name(), ".") {
+			continue
+		}
+		info, err := e.Info()
+		if err != nil {
+			continue
+		}
+		link := "/share/" + token + "/"
+		if subPath != "" {
+			link += subPath + "/"
+		}
+		link += e.Name()
+
+		size := ""
+		if !e.IsDir() {
+			bytes := info.Size()
+			if bytes < 1024 {
+				size = fmt.Sprintf("%d B", bytes)
+			} else if bytes < 1024*1024 {
+				size = fmt.Sprintf("%.1f KB", float64(bytes)/1024)
+			} else if bytes < 1024*1024*1024 {
+				size = fmt.Sprintf("%.1f MB", float64(bytes)/(1024*1024))
+			} else {
+				size = fmt.Sprintf("%.1f GB", float64(bytes)/(1024*1024*1024))
+			}
+		}
+
+		items = append(items, fileEntry{Name: e.Name(), IsDir: e.IsDir(), Size: size, Link: link})
+	}
+
+	// Build breadcrumb
+	breadcrumb := entry.FileName
+	if subPath != "" {
+		breadcrumb += " / " + strings.ReplaceAll(subPath, "/", " / ")
+	}
+
+	parentLink := ""
+	if subPath != "" {
+		parentParts := strings.Split(subPath, "/")
+		if len(parentParts) > 1 {
+			parentLink = "/share/" + token + "/" + strings.Join(parentParts[:len(parentParts)-1], "/")
+		} else {
+			parentLink = "/share/" + token
+		}
+	}
+
+	// Build file list HTML
+	var fileRows string
+	if parentLink != "" {
+		fileRows += fmt.Sprintf(`<a href="%s" class="item"><span class="icon">📁</span><span class="name">..</span><span class="size"></span></a>`, parentLink)
+	}
+	for _, item := range items {
+		icon := "📄"
+		if item.IsDir {
+			icon = "📁"
+		}
+		fileRows += fmt.Sprintf(`<a href="%s" class="item"><span class="icon">%s</span><span class="name">%s</span><span class="size">%s</span></a>`,
+			item.Link, icon, item.Name, item.Size)
+	}
+
+	downloadAllLink := "/share/" + token
+	if subPath != "" {
+		downloadAllLink += "/" + subPath
+	}
+	downloadAllLink += "?download=1"
+
+	uploadSection := ""
+	if entry.Mode == "collaborate" {
+		uploadAction := "/share/" + token + "/upload"
+		pwParam := ""
+		if entry.Password != "" {
+			pwParam = "?p=" + entry.Password
+		}
+		if subPath != "" {
+			if pwParam != "" {
+				pwParam += "&path=" + subPath
+			} else {
+				pwParam = "?path=" + subPath
+			}
+		}
+		uploadSection = fmt.Sprintf(`
+<div class="upload-zone" id="upload-zone">
+  <form method="POST" action="%s%s" enctype="multipart/form-data" class="upload-form">
+    <input type="file" name="files" multiple id="file-input" style="display:none" onchange="this.form.submit()">
+    <button type="button" onclick="document.getElementById('file-input').click()" class="dl-btn" style="background:#16a34a">Upload Files</button>
+    <span class="upload-hint">or drag files here</span>
+  </form>
+</div>
+<script>
+const zone=document.getElementById('upload-zone');
+zone.addEventListener('dragover',e=>{e.preventDefault();zone.style.background='#eff6ff'});
+zone.addEventListener('dragleave',()=>{zone.style.background=''});
+zone.addEventListener('drop',e=>{
+  e.preventDefault();zone.style.background='';
+  const fd=new FormData();
+  for(const f of e.dataTransfer.files)fd.append('files',f);
+  fetch('%s%s',{method:'POST',body:fd}).then(()=>location.reload());
+});
+</script>`, uploadAction, pwParam, uploadAction, pwParam)
+	}
+
+	html := fmt.Sprintf(`<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>CloudDrive — %s</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:#f8fafc;color:#1e293b;min-height:100vh}
+.header{background:#fff;border-bottom:1px solid #e2e8f0;padding:16px 24px;display:flex;align-items:center;justify-content:space-between}
+.header h1{font-size:16px;font-weight:600;color:#334155}
+.header .meta{font-size:12px;color:#94a3b8}
+.dl-btn{padding:8px 16px;background:#2563eb;color:#fff;border:none;border-radius:8px;font-size:13px;cursor:pointer;text-decoration:none}
+.dl-btn:hover{background:#1d4ed8}
+.breadcrumb{padding:12px 24px;font-size:13px;color:#64748b;border-bottom:1px solid #f1f5f9}
+.list{padding:8px 16px}
+.item{display:flex;align-items:center;padding:10px 12px;text-decoration:none;color:#334155;border-radius:8px;transition:background 0.1s}
+.item:hover{background:#f1f5f9}
+.icon{width:24px;font-size:18px;flex-shrink:0}
+.name{flex:1;font-size:14px}
+.size{font-size:12px;color:#94a3b8;min-width:80px;text-align:right}
+.upload-zone{padding:16px 24px;border-top:1px solid #e2e8f0;display:flex;align-items:center;gap:12px}
+.upload-form{display:flex;align-items:center;gap:12px}
+.upload-hint{font-size:13px;color:#94a3b8}
+.footer{padding:16px 24px;text-align:center;font-size:11px;color:#cbd5e1;margin-top:32px}
+</style>
+</head>
+<body>
+<div class="header">
+  <div>
+    <h1>%s</h1>
+    <div class="meta">Shared via CloudDrive</div>
+  </div>
+  <a href="%s" class="dl-btn">Download All (ZIP)</a>
+</div>
+<div class="breadcrumb">%s</div>
+<div class="list">%s</div>
+%s
+<div class="footer">%d file(s) &middot; Powered by CloudDrive</div>
+</body>
+</html>`, breadcrumb, entry.FileName, downloadAllLink, breadcrumb, fileRows, uploadSection, len(items))
+
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.Write([]byte(html))
 }
