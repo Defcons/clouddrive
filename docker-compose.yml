@@ -1,0 +1,34 @@
+services:
+  clouddrive:
+    build: .
+    container_name: clouddrive
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    volumes:
+      - /mnt/storage:/data
+    environment:
+      - STORAGE_ROOT=/data
+      - JWT_SECRET=change-this-to-a-random-secret
+      - USERNAME=admin
+      - PASSWORD=changeme
+      - PORT=8080
+
+  syncthing:
+    image: syncthing/syncthing:latest
+    container_name: syncthing
+    restart: unless-stopped
+    ports:
+      - "8384:8384"    # Syncthing Web UI
+      - "22000:22000/tcp"  # Sync protocol (TCP)
+      - "22000:22000/udp"  # Sync protocol (QUIC)
+      - "21027:21027/udp"  # Discovery
+    volumes:
+      - /mnt/storage:/var/syncthing/data
+      - syncthing_config:/var/syncthing/config
+    environment:
+      - PUID=1000
+      - PGID=1000
+
+volumes:
+  syncthing_config:

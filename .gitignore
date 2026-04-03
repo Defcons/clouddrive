@@ -1,0 +1,10 @@
+node_modules/
+frontend/dist/
+backend/static/*
+!backend/static/.gitkeep
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+.env
