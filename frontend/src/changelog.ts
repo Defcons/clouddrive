@@ -1,4 +1,4 @@
-export const APP_VERSION = '0.0.13'
+export const APP_VERSION = '0.0.14'
 
 export interface ChangelogEntry {
   version: string
@@ -7,6 +7,15 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {
+    version: '0.0.14',
+    date: '2026-04-03',
+    changes: [
+      'Shift-click range selection now works correctly with sorted file order',
+      'Shift+drag — hold shift and drag mouse over rows to select a range',
+      'Last-clicked item is properly tracked for consistent range selection',
+    ],
+  },
   {
     version: '0.0.13',
     date: '2026-04-03',

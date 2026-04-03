@@ -298,22 +298,26 @@ export default function FileExplorer({ initialPath, onLogout }: { initialPath: s
 
   // Multi-select
   const [selectedFiles, setSelectedFiles] = useState<Set<string>>(new Set())
+  const [lastClickedPath, setLastClickedPath] = useState<string | null>(null)
+
+  const selectRange = (fromPath: string, toPath: string) => {
+    const fromIdx = sortedFiles.findIndex((f) => f.path === fromPath)
+    const toIdx = sortedFiles.findIndex((f) => f.path === toPath)
+    if (fromIdx >= 0 && toIdx >= 0) {
+      const start = Math.min(fromIdx, toIdx)
+      const end = Math.max(fromIdx, toIdx)
+      const newSelection = new Set(selectedFiles)
+      for (let i = start; i <= end; i++) {
+        newSelection.add(sortedFiles[i].path)
+      }
+      setSelectedFiles(newSelection)
+    }
+  }
 
   const handleSelectionClick = (e: React.MouseEvent, file: FileItemType) => {
-    if (e.shiftKey && selectedFiles.size > 0) {
-      // Shift-click: select range
-      const lastSelected = Array.from(selectedFiles).pop()!
-      const lastIdx = files.findIndex((f) => f.path === lastSelected)
-      const currentIdx = files.findIndex((f) => f.path === file.path)
-      if (lastIdx >= 0 && currentIdx >= 0) {
-        const start = Math.min(lastIdx, currentIdx)
-        const end = Math.max(lastIdx, currentIdx)
-        const newSelection = new Set(selectedFiles)
-        for (let i = start; i <= end; i++) {
-          newSelection.add(files[i].path)
-        }
-        setSelectedFiles(newSelection)
-      }
+    if (e.shiftKey && lastClickedPath) {
+      // Shift-click: select range from last clicked to current
+      selectRange(lastClickedPath, file.path)
     } else {
       // Ctrl/Cmd click: toggle individual
       const newSelection = new Set(selectedFiles)
@@ -323,6 +327,7 @@ export default function FileExplorer({ initialPath, onLogout }: { initialPath: s
         newSelection.add(file.path)
       }
       setSelectedFiles(newSelection)
+      setLastClickedPath(file.path)
     }
   }
 
@@ -335,10 +340,18 @@ export default function FileExplorer({ initialPath, onLogout }: { initialPath: s
       newSelection.add(file.path)
     }
     setSelectedFiles(newSelection)
+    setLastClickedPath(file.path)
+  }
+
+  // Shift+mouseenter drag selection
+  const handleMouseEnter = (e: React.MouseEvent, file: FileItemType) => {
+    if (e.shiftKey && e.buttons === 1 && lastClickedPath) {
+      selectRange(lastClickedPath, file.path)
+    }
   }
 
   const getSelectedFileObjects = (): FileItemType[] => {
-    return files.filter((f) => selectedFiles.has(f.path))
+    return sortedFiles.filter((f) => selectedFiles.has(f.path))
   }
 
   const handleBulkDownload = async () => {
@@ -537,6 +550,13 @@ export default function FileExplorer({ initialPath, onLogout }: { initialPath: s
                     }`}
                     onClick={(e) => handleClick(e, file)}
                     onDoubleClick={() => handleDoubleClick(file)}
+                    onMouseDown={(e) => {
+                      if (e.shiftKey) {
+                        e.preventDefault() // prevent text selection during drag
+                        if (!lastClickedPath) setLastClickedPath(file.path)
+                      }
+                    }}
+                    onMouseEnter={(e) => handleMouseEnter(e, file)}
                     onContextMenu={(e) => {
                       if (selectedFiles.size > 1 && selectedFiles.has(file.path)) {
                         handleMultiContextMenu(e)
