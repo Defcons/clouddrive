@@ -1,4 +1,5 @@
 name: Deploy CloudDrive
+# Auto-deploys on push to master
 
 on:
   push:
