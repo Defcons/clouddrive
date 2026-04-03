@@ -1,4 +1,4 @@
-export const APP_VERSION = '0.0.21'
+export const APP_VERSION = '0.0.22'
 
 export interface ChangelogEntry {
   version: string
@@ -7,6 +7,14 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {
+    version: '0.0.22',
+    date: '2026-04-03',
+    changes: [
+      'Fix PDF preview — updated X-Frame-Options to SAMEORIGIN and added object-src to CSP',
+      'Download button in preview modal header — download the file directly from preview',
+    ],
+  },
   {
     version: '0.0.21',
     date: '2026-04-03',
