@@ -164,6 +164,30 @@ export default function FileExplorer({ initialPath, onLogout }: { initialPath: s
     return () => window.removeEventListener('mouseup', handler)
   }, [history, path])
 
+  // Global Escape key — cascading close: modals > context menu > selection > rename
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return
+      // Modals handle their own Escape, but if none are open, handle here
+      if (previewFile || shareFile || showChangelog || showSettings) return
+      if (contextMenu) {
+        setContextMenu(null)
+        return
+      }
+      if (renaming) {
+        setRenaming(null)
+        return
+      }
+      if (selectedFiles.size > 0) {
+        setSelectedFiles(new Set())
+        setLastClickedPath(null)
+        return
+      }
+    }
+    window.addEventListener('keydown', handler)
+    return () => window.removeEventListener('keydown', handler)
+  }, [previewFile, shareFile, showChangelog, showSettings, contextMenu, renaming, selectedFiles])
+
   const handleUpload = async (fileList: FileList) => {
     setUploadProgress(0)
     try {
