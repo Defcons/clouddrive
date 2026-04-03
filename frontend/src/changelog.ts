@@ -1,4 +1,4 @@
-export const APP_VERSION = '0.0.5'
+export const APP_VERSION = '0.0.6'
 
 export interface ChangelogEntry {
   version: string
@@ -7,6 +7,13 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {
+    version: '0.0.6',
+    date: '2026-04-03',
+    changes: [
+      'Right-click context menu now works on sidebar folders and Quick Access items',
+    ],
+  },
   {
     version: '0.0.5',
     date: '2026-04-03',

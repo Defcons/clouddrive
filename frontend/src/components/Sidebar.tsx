@@ -12,6 +12,7 @@ interface TreeNode {
 interface Props {
   currentPath: string
   onNavigate: (path: string) => void
+  onContextMenu: (e: React.MouseEvent, file: FileItem) => void
 }
 
 function SidebarItem({
@@ -20,6 +21,7 @@ function SidebarItem({
   currentPath,
   onNavigate,
   onToggle,
+  onContextMenu,
   expanded,
 }: {
   node: TreeNode
@@ -27,6 +29,7 @@ function SidebarItem({
   currentPath: string
   onNavigate: (path: string) => void
   onToggle: (path: string) => void
+  onContextMenu: (e: React.MouseEvent, file: FileItem) => void
   expanded: boolean
 }) {
   const isActive = currentPath === node.path
@@ -38,6 +41,11 @@ function SidebarItem({
         onClick={() => {
           onNavigate(node.path)
           onToggle(node.path)
+        }}
+        onContextMenu={(e) => {
+          e.preventDefault()
+          e.stopPropagation()
+          onContextMenu(e, { name: node.name, path: node.path, isDir: true, size: 0, modTime: 0 })
         }}
         className={`w-full flex items-center gap-1.5 py-1 px-2 text-left text-sm rounded-md transition group ${
           isActive
@@ -96,6 +104,7 @@ function SidebarItem({
               depth={depth + 1}
               currentPath={currentPath}
               onNavigate={onNavigate}
+              onContextMenu={onContextMenu}
             />
           ))}
         </div>
@@ -109,11 +118,13 @@ function SidebarItemWrapper({
   depth,
   currentPath,
   onNavigate,
+  onContextMenu,
 }: {
   node: TreeNode
   depth: number
   currentPath: string
   onNavigate: (path: string) => void
+  onContextMenu: (e: React.MouseEvent, file: FileItem) => void
 }) {
   const [expanded, setExpanded] = useState(false)
   const [localNode, setLocalNode] = useState(node)
@@ -173,12 +184,13 @@ function SidebarItemWrapper({
       currentPath={currentPath}
       onNavigate={onNavigate}
       onToggle={handleToggle}
+      onContextMenu={onContextMenu}
       expanded={expanded}
     />
   )
 }
 
-export default function Sidebar({ currentPath, onNavigate }: Props) {
+export default function Sidebar({ currentPath, onNavigate, onContextMenu }: Props) {
   const [rootFolders, setRootFolders] = useState<TreeNode[]>([])
   const [loading, setLoading] = useState(true)
   const [collapsed, setCollapsed] = useState(false)
@@ -257,6 +269,11 @@ export default function Sidebar({ currentPath, onNavigate }: Props) {
               <button
                 key={item.path}
                 onClick={() => onNavigate(item.path)}
+                onContextMenu={(e) => {
+                  e.preventDefault()
+                  e.stopPropagation()
+                  onContextMenu(e, { name: item.name, path: item.path, isDir: true, size: 0, modTime: 0 })
+                }}
                 className={`w-full flex items-center gap-1.5 py-1 px-2 text-left text-sm rounded-md transition group ${
                   currentPath === item.path
                     ? 'bg-blue-50 text-blue-700 font-medium'
@@ -308,6 +325,7 @@ export default function Sidebar({ currentPath, onNavigate }: Props) {
               depth={0}
               currentPath={currentPath}
               onNavigate={onNavigate}
+              onContextMenu={onContextMenu}
             />
           ))
         )}

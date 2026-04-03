@@ -208,7 +208,7 @@ export default function FileExplorer({ onLogout }: { onLogout: () => void }) {
 
       {/* Main area with sidebar */}
       <div className="flex flex-1 min-h-0">
-        <Sidebar currentPath={path} onNavigate={navigate} />
+        <Sidebar currentPath={path} onNavigate={navigate} onContextMenu={handleContextMenu} />
 
         {/* File list */}
         <UploadZone onUpload={handleUpload} uploadProgress={uploadProgress}>
