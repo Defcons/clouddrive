@@ -3,11 +3,14 @@ package main
 import (
 	"clouddrive/handlers"
 	"clouddrive/middleware"
+	"clouddrive/services"
 	"embed"
+	"fmt"
 	"io/fs"
 	"log"
 	"net/http"
 	"os"
+	"path/filepath"
 
 	"github.com/rs/cors"
 )
@@ -16,6 +19,21 @@ import (
 var staticFiles embed.FS
 
 func main() {
+	// Check for --hash-password utility
+	if len(os.Args) > 1 && os.Args[1] == "--hash-password" {
+		if len(os.Args) < 3 {
+			fmt.Println("Usage: clouddrive --hash-password <password>")
+			os.Exit(1)
+		}
+		hash, err := services.HashPassword(os.Args[2])
+		if err != nil {
+			fmt.Printf("Error: %v\n", err)
+			os.Exit(1)
+		}
+		fmt.Println(hash)
+		os.Exit(0)
+	}
+
 	port := os.Getenv("PORT")
 	if port == "" {
 		port = "8080"
@@ -31,26 +49,42 @@ func main() {
 		jwtSecret = "change-me-in-production"
 	}
 
-	username := os.Getenv("CLOUDDRIVE_USER")
-	if username == "" {
-		username = "admin"
-	}
-	password := os.Getenv("CLOUDDRIVE_PASS")
-	if password == "" {
-		password = "admin"
+	// User store setup
+	usersFile := os.Getenv("USERS_FILE")
+	if usersFile == "" {
+		usersFile = filepath.Join(storageRoot, "users.json")
 	}
 
-	fileHandler := handlers.NewFileHandler(storageRoot)
-	authHandler := handlers.NewAuthHandler(username, password, jwtSecret)
+	// Backward compatibility: migrate from env vars if users.json doesn't exist
+	username := os.Getenv("CLOUDDRIVE_USER")
+	password := os.Getenv("CLOUDDRIVE_PASS")
+	if username != "" && password != "" {
+		if err := services.InitFromEnv(usersFile, username, password); err != nil {
+			log.Printf("Warning: failed to migrate env vars to users.json: %v", err)
+		}
+	}
+
+	userStore, err := services.NewUserStore(usersFile)
+	if err != nil {
+		log.Fatalf("Failed to load user store: %v", err)
+	}
+
+	permStore := services.NewPermissionStore(storageRoot)
+
+	authHandler := handlers.NewAuthHandler(userStore, jwtSecret)
 	authMiddleware := middleware.NewAuthMiddleware(jwtSecret)
+	fileHandler := handlers.NewFileHandler(storageRoot, permStore)
 	diskHandler := handlers.NewDiskHandler(storageRoot)
 	shareHandler := handlers.NewShareHandler(storageRoot)
+	versionHandler := handlers.NewVersionHandler()
+	permHandler := handlers.NewPermissionsHandler(permStore)
 
 	mux := http.NewServeMux()
 
 	// Auth
 	mux.HandleFunc("POST /api/auth/login", authHandler.Login)
 	mux.HandleFunc("GET /api/auth/check", authMiddleware.Wrap(authHandler.Check))
+	mux.HandleFunc("POST /api/auth/change-password", authMiddleware.Wrap(authHandler.ChangePassword))
 
 	// Files (protected)
 	mux.HandleFunc("GET /api/files", authMiddleware.Wrap(fileHandler.List))
@@ -61,13 +95,17 @@ func main() {
 	mux.HandleFunc("POST /api/files/rename", authMiddleware.Wrap(fileHandler.Rename))
 	mux.HandleFunc("DELETE /api/files", authMiddleware.Wrap(fileHandler.Delete))
 
+	// Permissions (protected)
+	mux.HandleFunc("POST /api/files/permissions", authMiddleware.Wrap(permHandler.SetPrivate))
+	mux.HandleFunc("DELETE /api/files/permissions", authMiddleware.Wrap(permHandler.RemovePrivate))
+	mux.HandleFunc("GET /api/files/permissions", authMiddleware.Wrap(permHandler.GetPermission))
+
 	// Shares (management — protected)
 	mux.HandleFunc("POST /api/shares", authMiddleware.Wrap(shareHandler.Create))
 	mux.HandleFunc("GET /api/shares", authMiddleware.Wrap(shareHandler.List))
 	mux.HandleFunc("POST /api/shares/revoke", authMiddleware.Wrap(shareHandler.Revoke))
 
 	// Version (public — for update notifier polling)
-	versionHandler := handlers.NewVersionHandler()
 	mux.HandleFunc("GET /api/version", versionHandler.Info)
 
 	// Share download (public — no auth, GET + POST for password form)

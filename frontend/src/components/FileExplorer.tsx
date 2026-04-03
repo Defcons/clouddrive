@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import type { FileItem as FileItemType, ViewMode } from '../types'
-import { listFiles, downloadFile, uploadFiles, createFolder, renameFile, deleteFile, logout, isPreviewable, addQuickAccess } from '../api'
+import { listFiles, downloadFile, uploadFiles, createFolder, renameFile, deleteFile, logout, isPreviewable, addQuickAccess, setFolderPrivate, removeFolderPrivate } from '../api'
 import Breadcrumb from './Breadcrumb'
 import Toolbar from './Toolbar'
 import FileIcon from './FileIcon'
@@ -11,7 +11,9 @@ import ShareModal from './ShareModal'
 import Sidebar from './Sidebar'
 import UpdateToast from './UpdateToast'
 import ChangelogModal from './ChangelogModal'
+import SettingsModal from './SettingsModal'
 import { APP_VERSION } from '../changelog'
+import { getCurrentUser } from '../api'
 
 function formatSize(bytes: number): string {
   if (bytes === 0) return '—'
@@ -30,8 +32,8 @@ function formatDate(ms: number): string {
   })
 }
 
-export default function FileExplorer({ onLogout }: { onLogout: () => void }) {
-  const [path, setPath] = useState('/')
+export default function FileExplorer({ initialPath, onLogout }: { initialPath: string; onLogout: () => void }) {
+  const [path, setPath] = useState(initialPath || '/')
   const [files, setFiles] = useState<FileItemType[]>([])
   const [viewMode, setViewMode] = useState<ViewMode>('list')
   const [loading, setLoading] = useState(true)
@@ -44,6 +46,8 @@ export default function FileExplorer({ onLogout }: { onLogout: () => void }) {
   const [shareFile, setShareFile] = useState<FileItemType | null>(null)
   const [shareSafe, setShareSafe] = useState(false)
   const [showChangelog, setShowChangelog] = useState(false)
+  const [showSettings, setShowSettings] = useState(false)
+  const user = getCurrentUser()
 
   const refresh = useCallback(async () => {
     setLoading(true)
@@ -146,6 +150,26 @@ export default function FileExplorer({ onLogout }: { onLogout: () => void }) {
     window.dispatchEvent(new Event('quickaccess-updated'))
   }
 
+  const handleMakePrivate = async (file: FileItemType) => {
+    setContextMenu(null)
+    try {
+      await setFolderPrivate(file.path)
+      await refresh()
+    } catch {
+      setError('Failed to make folder private')
+    }
+  }
+
+  const handleMakePublic = async (file: FileItemType) => {
+    setContextMenu(null)
+    try {
+      await removeFolderPrivate(file.path)
+      await refresh()
+    } catch {
+      setError('Failed to make folder public')
+    }
+  }
+
   const handleShare = (file: FileItemType, safe = false) => {
     setContextMenu(null)
     setShareSafe(safe)
@@ -183,6 +207,18 @@ export default function FileExplorer({ onLogout }: { onLogout: () => void }) {
                 title="View changelog"
               >
                 v{APP_VERSION}
+              </button>
+              <span className="text-xs text-gray-400">|</span>
+              <span className="text-xs text-gray-500">{user.username}</span>
+              <button
+                onClick={() => setShowSettings(true)}
+                className="p-1 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-md transition"
+                title="Settings"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.066 2.573c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.573 1.066c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.066-2.573c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                </svg>
               </button>
             </div>
           </div>
@@ -243,7 +279,14 @@ export default function FileExplorer({ onLogout }: { onLogout: () => void }) {
                   >
                     <td className="py-2 pl-2">
                       <div className="flex items-center gap-2.5">
-                        <FileIcon name={file.name} isDir={file.isDir} />
+                        <div className="relative flex-shrink-0">
+                          <FileIcon name={file.name} isDir={file.isDir} />
+                          {file.isPrivate && (
+                            <svg className="w-2.5 h-2.5 text-orange-500 absolute -bottom-0.5 -right-0.5" fill="currentColor" viewBox="0 0 20 20">
+                              <path fillRule="evenodd" d="M5 9V7a5 5 0 0110 0v2a2 2 0 012 2v5a2 2 0 01-2 2H5a2 2 0 01-2-2v-5a2 2 0 012-2zm8-2v2H7V7a3 3 0 016 0z" clipRule="evenodd" />
+                            </svg>
+                          )}
+                        </div>
                         {renaming === file.path ? (
                           <input
                             autoFocus
@@ -265,7 +308,11 @@ export default function FileExplorer({ onLogout }: { onLogout: () => void }) {
                       </div>
                     </td>
                     <td className="py-2 text-right text-sm text-gray-500">
-                      {file.isDir ? '—' : formatSize(file.size)}
+                      {file.isDir
+                        ? file.itemCount !== undefined
+                          ? `${file.itemCount} item${file.itemCount !== 1 ? 's' : ''}`
+                          : '—'
+                        : formatSize(file.size)}
                     </td>
                     <td className="py-2 text-right text-sm text-gray-500 pr-2">
                       {formatDate(file.modTime)}
@@ -334,6 +381,9 @@ export default function FileExplorer({ onLogout }: { onLogout: () => void }) {
           onRename={() => handleRenameStart(contextMenu.file)}
           onDelete={() => handleDelete(contextMenu.file)}
           onQuickAccess={() => handleQuickAccess(contextMenu.file)}
+          onMakePrivate={() => handleMakePrivate(contextMenu.file)}
+          onMakePublic={() => handleMakePublic(contextMenu.file)}
+          isPrivate={contextMenu.file.isPrivate}
           onClose={() => setContextMenu(null)}
         />
       )}
@@ -348,6 +398,10 @@ export default function FileExplorer({ onLogout }: { onLogout: () => void }) {
 
       {showChangelog && (
         <ChangelogModal onClose={() => setShowChangelog(false)} />
+      )}
+
+      {showSettings && (
+        <SettingsModal onClose={() => setShowSettings(false)} />
       )}
 
       <UpdateToast />
