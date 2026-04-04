@@ -66,7 +66,7 @@ export default function TrashView({ onClose, onNavigate }: Props) {
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={onClose}>
-      <div className="bg-white dark:bg-gray-800 rounded-xl shadow-2xl w-full max-w-3xl mx-4 max-h-[80vh] flex flex-col overflow-hidden" onClick={(e) => e.stopPropagation()}>
+      <div className="bg-white dark:bg-gray-800 rounded-xl shadow-2xl w-full max-w-3xl mx-0 md:mx-4 max-h-full md:max-h-[80vh] h-full md:h-auto flex flex-col overflow-hidden" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between px-5 py-4 border-b border-gray-200 dark:border-gray-700 flex-shrink-0">
           <div className="flex items-center gap-2">
             <svg className="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -98,21 +98,21 @@ export default function TrashView({ onClose, onNavigate }: Props) {
             <table className="w-full text-sm">
               <thead className="sticky top-0 bg-gray-50 dark:bg-gray-900">
                 <tr className="text-left text-xs text-gray-500 dark:text-gray-400 uppercase">
-                  <th className="px-4 py-2 font-medium">Name</th>
-                  <th className="px-4 py-2 font-medium">Original Location</th>
-                  <th className="px-4 py-2 font-medium">Size</th>
-                  <th className="px-4 py-2 font-medium">Deleted</th>
-                  <th className="px-4 py-2 font-medium">Actions</th>
+                  <th className="px-3 md:px-4 py-2 font-medium">Name</th>
+                  <th className="px-4 py-2 font-medium hidden md:table-cell">Original Location</th>
+                  <th className="px-4 py-2 font-medium hidden sm:table-cell">Size</th>
+                  <th className="px-4 py-2 font-medium hidden md:table-cell">Deleted</th>
+                  <th className="px-3 md:px-4 py-2 font-medium">Actions</th>
                 </tr>
               </thead>
               <tbody>
                 {items.map((item) => (
                   <tr key={item.id} className="border-t border-gray-100 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700/50">
-                    <td className="px-4 py-2 text-gray-800 dark:text-gray-200">{item.name}</td>
-                    <td className="px-4 py-2 text-gray-500 dark:text-gray-400 font-mono text-xs truncate max-w-48">{item.originalPath}</td>
-                    <td className="px-4 py-2 text-gray-500 dark:text-gray-400 whitespace-nowrap">{formatSize(item.size)}</td>
-                    <td className="px-4 py-2 text-gray-500 dark:text-gray-400 whitespace-nowrap">{formatDate(item.deletedAt)}</td>
-                    <td className="px-4 py-2">
+                    <td className="px-3 md:px-4 py-2 text-gray-800 dark:text-gray-200 truncate max-w-[150px] md:max-w-none">{item.name}</td>
+                    <td className="px-4 py-2 text-gray-500 dark:text-gray-400 font-mono text-xs truncate max-w-48 hidden md:table-cell">{item.originalPath}</td>
+                    <td className="px-4 py-2 text-gray-500 dark:text-gray-400 whitespace-nowrap hidden sm:table-cell">{formatSize(item.size)}</td>
+                    <td className="px-4 py-2 text-gray-500 dark:text-gray-400 whitespace-nowrap hidden md:table-cell">{formatDate(item.deletedAt)}</td>
+                    <td className="px-3 md:px-4 py-2">
                       <div className="flex gap-1">
                         <button onClick={() => handleRestore(item.id)} className="text-xs px-2 py-1 text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/30 rounded transition">
                           Restore

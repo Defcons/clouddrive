@@ -22,15 +22,15 @@ export default function Toolbar({ viewMode, onViewModeChange, onUpload, onNewFol
   const [searchOpen, setSearchOpen] = useState(false)
 
   return (
-    <div className="flex items-center gap-2 flex-wrap">
+    <div className="flex items-center gap-1.5 md:gap-2 flex-wrap">
       <button
         onClick={() => fileInputRef.current?.click()}
-        className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 transition"
+        className="flex items-center gap-1.5 px-2.5 md:px-3 py-1.5 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 transition"
       >
         <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
         </svg>
-        Upload
+        <span className="hidden sm:inline">Upload</span>
       </button>
       <input
         ref={fileInputRef}
@@ -42,23 +42,24 @@ export default function Toolbar({ viewMode, onViewModeChange, onUpload, onNewFol
 
       <button
         onClick={onNewFolder}
-        className="flex items-center gap-1.5 px-3 py-1.5 bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-lg text-sm font-medium hover:bg-gray-300 dark:hover:bg-gray-600 transition"
+        className="flex items-center gap-1.5 px-2.5 md:px-3 py-1.5 bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-lg text-sm font-medium hover:bg-gray-300 dark:hover:bg-gray-600 transition"
       >
         <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 13h6m-3-3v6m-9 1V7a2 2 0 012-2h6l2 2h6a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2z" />
         </svg>
-        New Folder
+        <span className="hidden sm:inline">New Folder</span>
       </button>
 
       {clipboard && (
         <button
           onClick={onPaste}
-          className="flex items-center gap-1.5 px-3 py-1.5 bg-green-600 text-white rounded-lg text-sm font-medium hover:bg-green-700 transition"
+          className="flex items-center gap-1.5 px-2.5 md:px-3 py-1.5 bg-green-600 text-white rounded-lg text-sm font-medium hover:bg-green-700 transition"
         >
           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
           </svg>
-          Paste ({clipboard.paths.length} {clipboard.mode === 'cut' ? 'cut' : 'copied'})
+          <span className="hidden sm:inline">Paste ({clipboard.paths.length} {clipboard.mode === 'cut' ? 'cut' : 'copied'})</span>
+          <span className="sm:hidden">Paste</span>
         </button>
       )}
 
@@ -83,7 +84,7 @@ export default function Toolbar({ viewMode, onViewModeChange, onUpload, onNewFol
       </button>
 
       {/* Search */}
-      <div className="relative flex-1 max-w-xs">
+      <div className="relative flex-1 min-w-0 max-w-xs order-last sm:order-none w-full sm:w-auto">
         <input
           ref={searchRef}
           type="text"
@@ -129,9 +130,13 @@ export default function Toolbar({ viewMode, onViewModeChange, onUpload, onNewFol
 
         <button
           onClick={onLogout}
-          className="px-3 py-1.5 text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300 text-sm hover:bg-gray-200 dark:hover:bg-gray-700 rounded-lg transition"
+          className="px-2 md:px-3 py-1.5 text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300 text-sm hover:bg-gray-200 dark:hover:bg-gray-700 rounded-lg transition"
+          title="Logout"
         >
-          Logout
+          <span className="hidden sm:inline">Logout</span>
+          <svg className="w-4 h-4 sm:hidden" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+          </svg>
         </button>
       </div>
     </div>
