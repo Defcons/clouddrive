@@ -97,6 +97,7 @@ export default function FileExplorer({ initialPath, onLogout }: { initialPath: s
   const [fileFilter, setFileFilter] = useState('')
   const [showBatchRename, setShowBatchRename] = useState(false)
   const [showSharesManager, setShowSharesManager] = useState(false)
+  const [mobileSidebar, setMobileSidebar] = useState(false)
   const [diskUsage, setDiskUsage] = useState<{ totalSize: number; totalSpace: number; freeSpace: number; perUser?: { username: string; size: number }[] } | null>(null)
   const searchRef = useRef<HTMLInputElement>(null)
   const [sortBy, setSortBy] = useState<'name' | 'size' | 'createdAt' | 'modTime'>(() => (localStorage.getItem('clouddrive_sortBy') as any) || 'name')
@@ -624,23 +625,35 @@ export default function FileExplorer({ initialPath, onLogout }: { initialPath: s
   return (
     <div className="h-screen flex flex-col bg-gray-50 dark:bg-gray-900">
       {/* Header */}
-      <header className="bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 px-4 py-2 flex-shrink-0">
+      <header className="bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 px-3 md:px-4 py-2 flex-shrink-0">
         <div className="space-y-1.5">
           <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-1.5 md:gap-2">
+              {/* Hamburger menu for mobile */}
+              <button
+                onClick={() => setMobileSidebar(true)}
+                className="md:hidden p-1.5 -ml-1 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-md transition"
+                title="Open sidebar"
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+                </svg>
+              </button>
               <h1 className="text-lg font-bold text-gray-800 dark:text-gray-100">CloudDrive</h1>
               <button
                 onClick={() => setShowChangelog(true)}
-                className="px-2 py-0.5 border border-gray-300 text-gray-500 text-xs font-mono rounded-md hover:border-blue-400 hover:text-blue-600 transition"
+                className="hidden sm:inline-flex px-2 py-0.5 border border-gray-300 text-gray-500 text-xs font-mono rounded-md hover:border-blue-400 hover:text-blue-600 transition"
                 title="View changelog"
               >
                 v{APP_VERSION}
               </button>
-              <span className="text-xs text-gray-400 dark:text-gray-600">|</span>
-              <span className="text-xs text-gray-500 dark:text-gray-400">{user.username}</span>
+              <span className="hidden sm:inline text-xs text-gray-400 dark:text-gray-600">|</span>
+              <span className="hidden sm:inline text-xs text-gray-500 dark:text-gray-400">{user.username}</span>
+            </div>
+            <div className="flex items-center gap-0.5 md:gap-1">
               <button
                 onClick={toggleTheme}
-                className="p-1 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-md transition"
+                className="p-1.5 md:p-1 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-md transition"
                 title={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
               >
                 {theme === 'dark' ? (
@@ -656,7 +669,7 @@ export default function FileExplorer({ initialPath, onLogout }: { initialPath: s
               <NotificationBell onNavigate={navigate} />
               <button
                 onClick={() => setShowSharesManager(true)}
-                className="p-1 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-md transition"
+                className="p-1.5 md:p-1 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-md transition"
                 title="Active Shares"
               >
                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -666,7 +679,7 @@ export default function FileExplorer({ initialPath, onLogout }: { initialPath: s
               {user.role === 'admin' && (
                 <button
                   onClick={() => setShowAuditLog(true)}
-                  className="p-1 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-md transition"
+                  className="hidden sm:inline-flex p-1.5 md:p-1 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-md transition"
                   title="Audit Log"
                 >
                   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -676,7 +689,7 @@ export default function FileExplorer({ initialPath, onLogout }: { initialPath: s
               )}
               <button
                 onClick={() => setShowSettings(true)}
-                className="p-1 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-md transition"
+                className="p-1.5 md:p-1 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-md transition"
                 title="Settings"
               >
                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -721,29 +734,31 @@ export default function FileExplorer({ initialPath, onLogout }: { initialPath: s
               </button>
             )}
           </div>
-          <div className="flex items-center gap-1.5">
+          <div className="flex items-center gap-1 md:gap-1.5 min-w-0">
             <button
               onClick={goBack}
               disabled={history.length === 0}
-              className="flex items-center gap-1 px-2 py-1 text-xs font-medium text-gray-600 dark:text-gray-300 bg-gray-100 dark:bg-gray-700 rounded-md hover:bg-gray-200 dark:hover:bg-gray-600 transition disabled:opacity-30"
+              className="flex items-center gap-0.5 md:gap-1 px-1.5 md:px-2 py-1 text-xs font-medium text-gray-600 dark:text-gray-300 bg-gray-100 dark:bg-gray-700 rounded-md hover:bg-gray-200 dark:hover:bg-gray-600 transition disabled:opacity-30 flex-shrink-0"
             >
               <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
               </svg>
-              Back
+              <span className="hidden sm:inline">Back</span>
             </button>
             <button
               onClick={goUp}
               disabled={path === (user.homeFolder || '/')}
-              className="flex items-center gap-1 px-2 py-1 text-xs font-medium text-gray-600 dark:text-gray-300 bg-gray-100 dark:bg-gray-700 rounded-md hover:bg-gray-200 dark:hover:bg-gray-600 transition disabled:opacity-30"
+              className="flex items-center gap-0.5 md:gap-1 px-1.5 md:px-2 py-1 text-xs font-medium text-gray-600 dark:text-gray-300 bg-gray-100 dark:bg-gray-700 rounded-md hover:bg-gray-200 dark:hover:bg-gray-600 transition disabled:opacity-30 flex-shrink-0"
             >
               <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" />
               </svg>
-              Up
+              <span className="hidden sm:inline">Up</span>
             </button>
-            <span className="text-gray-300">|</span>
-            <Breadcrumb path={path} homeFolder={user.homeFolder} onNavigate={navigate} />
+            <span className="text-gray-300 flex-shrink-0">|</span>
+            <div className="min-w-0 overflow-hidden flex-1">
+              <Breadcrumb path={path} homeFolder={user.homeFolder} onNavigate={navigate} />
+            </div>
           </div>
         </div>
       </header>
@@ -766,29 +781,34 @@ export default function FileExplorer({ initialPath, onLogout }: { initialPath: s
           onShowTrash={() => setShowTrash(true)}
           diskUsage={diskUsage}
           onDrop={(paths, dest) => moveFiles(paths, dest).then(() => { refresh(); window.dispatchEvent(new Event('sidebar-refresh')) })}
+          mobileOpen={mobileSidebar}
+          onMobileClose={() => setMobileSidebar(false)}
         />
 
         {/* File list */}
         <UploadZone onUpload={handleUpload} uploadProgress={uploadProgress}>
-          <div className="w-full p-4 overflow-auto flex-1 folder-transition">
+          <div className="w-full p-2 md:p-4 overflow-auto flex-1 folder-transition">
           {selectedFiles.size > 0 && (
-            <div className="flex items-center gap-3 mb-3 px-2 py-2 bg-blue-50 dark:bg-blue-900/30 rounded-lg border border-blue-200 dark:border-blue-800">
-              <span className="text-sm text-blue-700 dark:text-blue-300 font-medium">
-                {selectedFiles.size} item{selectedFiles.size !== 1 ? 's' : ''} selected
+            <div className="flex items-center gap-2 md:gap-3 mb-3 px-2 py-2 bg-blue-50 dark:bg-blue-900/30 rounded-lg border border-blue-200 dark:border-blue-800 overflow-x-auto scrollbar-none">
+              <span className="text-sm text-blue-700 dark:text-blue-300 font-medium whitespace-nowrap flex-shrink-0">
+                {selectedFiles.size} item{selectedFiles.size !== 1 ? 's' : ''}
+                <span className="hidden sm:inline">
+                {' '}selected
                 {(() => {
                   const totalSize = getSelectedFileObjects().reduce((sum, f) => sum + (f.isDir ? 0 : f.size), 0)
                   return totalSize > 0 ? ` (${formatSize(totalSize)})` : ''
                 })()}
+                </span>
               </span>
-              <button onClick={handleCut} className="text-xs px-2.5 py-1 bg-gray-600 text-white rounded-md hover:bg-gray-700 transition">Cut</button>
-              <button onClick={handleCopy} className="text-xs px-2.5 py-1 bg-gray-600 text-white rounded-md hover:bg-gray-700 transition">Copy</button>
-              <button onClick={handleBulkDownload} className="text-xs px-2.5 py-1 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition">Download</button>
-              <button onClick={handleBulkDelete} className="text-xs px-2.5 py-1 bg-red-500 text-white rounded-md hover:bg-red-600 transition">Delete</button>
+              <button onClick={handleCut} className="text-xs px-2.5 py-1.5 bg-gray-600 text-white rounded-md hover:bg-gray-700 transition flex-shrink-0">Cut</button>
+              <button onClick={handleCopy} className="text-xs px-2.5 py-1.5 bg-gray-600 text-white rounded-md hover:bg-gray-700 transition flex-shrink-0">Copy</button>
+              <button onClick={handleBulkDownload} className="text-xs px-2.5 py-1.5 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition flex-shrink-0 hidden sm:block">Download</button>
+              <button onClick={handleBulkDelete} className="text-xs px-2.5 py-1.5 bg-red-500 text-white rounded-md hover:bg-red-600 transition flex-shrink-0">Delete</button>
               <button
                 onClick={() => setSelectedFiles(new Set())}
-                className="text-xs text-blue-600 hover:text-blue-800 ml-auto"
+                className="text-xs text-blue-600 hover:text-blue-800 ml-auto flex-shrink-0"
               >
-                Clear selection
+                Clear
               </button>
             </div>
           )}
@@ -808,8 +828,8 @@ export default function FileExplorer({ initialPath, onLogout }: { initialPath: s
                 <col style={{ width: '36px' }} />
                 <col />
                 <col style={{ width: '100px' }} />
-                <col style={{ width: '160px' }} />
-                <col style={{ width: '160px' }} />
+                <col className="hidden md:table-column" style={{ width: '160px' }} />
+                <col className="hidden md:table-column" style={{ width: '160px' }} />
               </colgroup>
               <thead>
                 <tr className="text-left text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wider border-b border-gray-200 dark:border-gray-700">
@@ -832,8 +852,8 @@ export default function FileExplorer({ initialPath, onLogout }: { initialPath: s
                   </th>
                   <SortHeader label="Name" column="name" sortBy={sortBy} sortDir={sortDir} onClick={handleSort} className="pb-2 pl-2" />
                   <SortHeader label="Size" column="size" sortBy={sortBy} sortDir={sortDir} onClick={handleSort} className="pb-2 text-right" />
-                  <SortHeader label="Created" column="createdAt" sortBy={sortBy} sortDir={sortDir} onClick={handleSort} className="pb-2 text-right" />
-                  <SortHeader label="Modified" column="modTime" sortBy={sortBy} sortDir={sortDir} onClick={handleSort} className="pb-2 text-right pr-2" />
+                  <SortHeader label="Created" column="createdAt" sortBy={sortBy} sortDir={sortDir} onClick={handleSort} className="pb-2 text-right hidden md:table-cell" />
+                  <SortHeader label="Modified" column="modTime" sortBy={sortBy} sortDir={sortDir} onClick={handleSort} className="pb-2 text-right pr-2 hidden md:table-cell" />
                 </tr>
               </thead>
               <tbody>
@@ -883,17 +903,17 @@ export default function FileExplorer({ initialPath, onLogout }: { initialPath: s
                     }}
                   >
                     <td
-                      className="py-2 cursor-pointer text-center"
+                      className="py-3 md:py-2 cursor-pointer text-center"
                       onClick={(e) => { e.stopPropagation(); handleCheckboxToggle(e, file) }}
                     >
                       <input
                         type="checkbox"
                         checked={selectedFiles.has(file.path)}
                         onChange={() => {}}
-                        className="w-3.5 h-3.5 rounded border-gray-300 text-blue-600 focus:ring-blue-500 cursor-pointer pointer-events-none"
+                        className="w-4 h-4 md:w-3.5 md:h-3.5 rounded border-gray-300 text-blue-600 focus:ring-blue-500 cursor-pointer pointer-events-none"
                       />
                     </td>
-                    <td className="py-2 pl-2">
+                    <td className="py-3 md:py-2 pl-2">
                       <div className="flex items-center gap-2.5">
                         <div className="relative flex-shrink-0">
                           {!file.isDir && /\.(jpg|jpeg|png|gif|webp|svg|bmp)$/i.test(file.name) ? (
@@ -932,17 +952,17 @@ export default function FileExplorer({ initialPath, onLogout }: { initialPath: s
                         )}
                       </div>
                     </td>
-                    <td className="py-2 text-right text-sm text-gray-500 dark:text-gray-400 whitespace-nowrap">
+                    <td className="py-2 md:py-2 text-right text-sm text-gray-500 dark:text-gray-400 whitespace-nowrap">
                       {file.isDir
                         ? file.itemCount !== undefined
                           ? `${file.itemCount} item${file.itemCount !== 1 ? 's' : ''}`
                           : '—'
                         : formatSize(file.size)}
                     </td>
-                    <td className="py-2 text-right text-sm text-gray-500 dark:text-gray-400 whitespace-nowrap">
+                    <td className="py-2 text-right text-sm text-gray-500 dark:text-gray-400 whitespace-nowrap hidden md:table-cell">
                       {formatDate(file.createdAt)}
                     </td>
-                    <td className="py-2 text-right text-sm text-gray-500 pr-2 whitespace-nowrap">
+                    <td className="py-2 text-right text-sm text-gray-500 pr-2 whitespace-nowrap hidden md:table-cell">
                       {formatDate(file.modTime)}
                     </td>
                   </tr>
@@ -950,7 +970,7 @@ export default function FileExplorer({ initialPath, onLogout }: { initialPath: s
               </tbody>
             </table>
           ) : (
-            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3">
+            <div className="grid grid-cols-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-2 md:gap-3">
               {filteredFiles.slice(0, visibleCount).map((file) => (
                 <div
                   key={file.path}

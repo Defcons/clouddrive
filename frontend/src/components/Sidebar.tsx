@@ -17,6 +17,8 @@ interface Props {
   onShowTrash: () => void
   diskUsage: { totalSize: number; totalSpace: number; freeSpace: number; perUser?: { username: string; size: number }[] } | null
   onDrop?: (paths: string[], destination: string) => void
+  mobileOpen?: boolean
+  onMobileClose?: () => void
 }
 
 function SidebarItem({
@@ -254,7 +256,7 @@ function formatBytes(bytes: number): string {
   return `${(bytes / Math.pow(1024, i)).toFixed(1)} ${units[i]}`
 }
 
-export default function Sidebar({ currentPath, homeFolder, onNavigate, onContextMenu, onShowTrash, diskUsage, onDrop }: Props) {
+export default function Sidebar({ currentPath, homeFolder, onNavigate, onContextMenu, onShowTrash, diskUsage, onDrop, mobileOpen, onMobileClose }: Props) {
   const [rootFolders, setRootFolders] = useState<TreeNode[]>([])
   const [loading, setLoading] = useState(true)
   const [collapsed, setCollapsed] = useState(false)
@@ -300,9 +302,15 @@ export default function Sidebar({ currentPath, homeFolder, onNavigate, onContext
     setQuickAccess(getQuickAccess())
   }
 
+  // Close mobile sidebar on navigate
+  const handleMobileNavigate = (p: string) => {
+    onNavigate(p)
+    onMobileClose?.()
+  }
+
   if (collapsed) {
     return (
-      <div className="w-10 flex-shrink-0 bg-white dark:bg-gray-800 border-r border-gray-200 dark:border-gray-700 flex flex-col items-center pt-2">
+      <div className="w-10 flex-shrink-0 bg-white dark:bg-gray-800 border-r border-gray-200 dark:border-gray-700 hidden md:flex flex-col items-center pt-2">
         <button
           onClick={() => setCollapsed(false)}
           className="p-1.5 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-md transition"
@@ -316,8 +324,8 @@ export default function Sidebar({ currentPath, homeFolder, onNavigate, onContext
     )
   }
 
-  return (
-    <div className="w-56 flex-shrink-0 bg-white dark:bg-gray-800 border-r border-gray-200 dark:border-gray-700 flex flex-col overflow-hidden">
+  const sidebarContent = (
+    <div className="w-full h-full bg-white dark:bg-gray-800 border-r border-gray-200 dark:border-gray-700 flex flex-col overflow-hidden">
       {/* Sidebar header */}
       <div className="flex items-center justify-between px-3 py-2 border-b border-gray-100 dark:border-gray-700">
         <span className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Folders</span>
@@ -361,7 +369,7 @@ export default function Sidebar({ currentPath, homeFolder, onNavigate, onContext
             {quickAccess.map((item) => (
               <button
                 key={item.path}
-                onClick={() => onNavigate(item.path)}
+                onClick={() => handleMobileNavigate(item.path)}
                 onContextMenu={(e) => {
                   e.preventDefault()
                   e.stopPropagation()
@@ -393,7 +401,7 @@ export default function Sidebar({ currentPath, homeFolder, onNavigate, onContext
 
         {/* Home / root */}
         <button
-          onClick={() => onNavigate(rootPath)}
+          onClick={() => handleMobileNavigate(rootPath)}
           className={`w-full flex items-center gap-1.5 py-1 px-2 text-left text-sm rounded-md transition mb-0.5 ${
             currentPath === rootPath
               ? 'bg-blue-50 text-blue-700 font-medium'
@@ -427,8 +435,8 @@ export default function Sidebar({ currentPath, homeFolder, onNavigate, onContext
       {/* Trash */}
       <div className="border-t border-gray-100 dark:border-gray-700 px-1 py-1">
         <button
-          onClick={onShowTrash}
-          className="w-full flex items-center gap-1.5 py-1 px-2 text-left text-sm rounded-md text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 transition"
+          onClick={() => { onShowTrash(); onMobileClose?.() }}
+          className="w-full flex items-center gap-1.5 py-1.5 md:py-1 px-2 text-left text-sm rounded-md text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 transition"
         >
           <svg className="w-4 h-4 text-gray-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
@@ -470,5 +478,19 @@ export default function Sidebar({ currentPath, homeFolder, onNavigate, onContext
         </div>
       )}
     </div>
+  )
+
+  return (
+    <>
+      {/* Desktop sidebar */}
+      <div className="hidden md:flex w-56 flex-shrink-0">
+        {sidebarContent}
+      </div>
+      {/* Mobile drawer */}
+      <div className={`sidebar-backdrop md:hidden ${mobileOpen ? 'open' : ''}`} onClick={onMobileClose} />
+      <div className={`sidebar-mobile md:hidden ${mobileOpen ? 'open' : ''}`}>
+        {sidebarContent}
+      </div>
+    </>
   )
 }
