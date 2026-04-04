@@ -642,7 +642,7 @@ export default function FileExplorer({ initialPath, onLogout }: { initialPath: s
               <h1 className="text-lg font-bold text-gray-800 dark:text-gray-100">CloudDrive</h1>
               <button
                 onClick={() => setShowChangelog(true)}
-                className="hidden sm:inline-flex px-2 py-0.5 border border-gray-300 text-gray-500 text-xs font-mono rounded-md hover:border-blue-400 hover:text-blue-600 transition"
+                className="px-1.5 sm:px-2 py-0.5 border border-gray-300 text-gray-500 text-xs font-mono rounded-md hover:border-blue-400 hover:text-blue-600 transition"
                 title="View changelog"
               >
                 v{APP_VERSION}
