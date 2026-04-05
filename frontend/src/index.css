@@ -52,6 +52,20 @@ body {
   transition: opacity 0.15s ease;
 }
 
+/* PWA standalone mode */
+@media (display-mode: standalone) {
+  body {
+    -webkit-user-select: none;
+    user-select: none;
+    -webkit-touch-callout: none;
+    overscroll-behavior: none;
+  }
+  input, textarea {
+    -webkit-user-select: text;
+    user-select: text;
+  }
+}
+
 /* Mobile sidebar drawer */
 @media (max-width: 768px) {
   .sidebar-backdrop {
@@ -79,6 +93,15 @@ body {
   }
   .sidebar-mobile.open {
     transform: translateX(0);
+  }
+  /* Larger tap targets */
+  table tbody tr td {
+    padding-top: 10px !important;
+    padding-bottom: 10px !important;
+  }
+  /* Prevent double-tap zoom */
+  * {
+    touch-action: manipulation;
   }
 }
 

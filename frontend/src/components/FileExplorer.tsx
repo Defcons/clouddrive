@@ -887,6 +887,21 @@ export default function FileExplorer({ initialPath, onLogout }: { initialPath: s
                     }}
                     onClick={(e) => handleClick(e, file)}
                     onDoubleClick={() => handleDoubleClick(file)}
+                    onTouchStart={(e) => {
+                      const timer = setTimeout(() => {
+                        const touch = e.touches[0]
+                        if (touch) {
+                          setContextMenu({ x: touch.clientX, y: touch.clientY, file })
+                        }
+                      }, 500)
+                      ;(e.currentTarget as any)._longPressTimer = timer
+                    }}
+                    onTouchEnd={(e) => {
+                      clearTimeout((e.currentTarget as any)._longPressTimer)
+                    }}
+                    onTouchMove={(e) => {
+                      clearTimeout((e.currentTarget as any)._longPressTimer)
+                    }}
                     onMouseDown={(e) => {
                       if (e.shiftKey) {
                         e.preventDefault() // prevent text selection during drag

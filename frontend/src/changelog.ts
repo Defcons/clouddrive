@@ -1,4 +1,4 @@
-export const APP_VERSION = '0.0.28'
+export const APP_VERSION = '0.0.29'
 
 export interface ChangelogEntry {
   version: string
@@ -7,6 +7,19 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {
+    version: '0.0.29',
+    date: '2026-04-05',
+    changes: [
+      'Progressive Web App (PWA) — installable on Android and desktop as a standalone app',
+      'App manifest with CloudDrive icon, standalone display mode, theme colors',
+      'Service worker for offline caching of static assets and navigation fallback',
+      'Long-press on mobile opens context menu (500ms hold)',
+      'Larger touch targets on mobile for easier tapping',
+      'Prevented double-tap zoom and overscroll bounce in standalone mode',
+      'Apple touch icon and meta tags for iOS home screen support',
+    ],
+  },
   {
     version: '0.0.28',
     date: '2026-04-03',
