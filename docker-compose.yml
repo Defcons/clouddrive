@@ -17,6 +17,7 @@ services:
     image: syncthing/syncthing:latest
     container_name: syncthing
     restart: unless-stopped
+    hostname: clouddrive-server
     ports:
       - "8384:8384"    # Syncthing Web UI
       - "22000:22000/tcp"  # Sync protocol (TCP)
@@ -24,10 +25,7 @@ services:
       - "21027:21027/udp"  # Discovery
     volumes:
       - /data:/var/syncthing/data
-      - syncthing_config:/var/syncthing/config
+      - /opt/syncthing-config:/var/syncthing/config
     environment:
       - PUID=1000
       - PGID=1000
-
-volumes:
-  syncthing_config:
