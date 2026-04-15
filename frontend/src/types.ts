@@ -8,6 +8,7 @@ export interface FileItem {
   itemCount?: number
   isPrivate?: boolean
   tags?: string[]
+  backupTier?: number
 }
 
 export interface DiskUsage {

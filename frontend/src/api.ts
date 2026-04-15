@@ -222,6 +222,30 @@ export async function removeFolderPrivate(path: string) {
   return res.json()
 }
 
+export async function getBackupTier(path: string): Promise<{ path: string; tier: number; exact: number; inherited: boolean }> {
+  const res = await fetch(`${API_BASE}/files/backup-tier?path=${encodeURIComponent(path)}`, {
+    headers: authHeaders(),
+  })
+  if (!res.ok) throw new Error('Failed to get backup tier')
+  return res.json()
+}
+
+export async function setBackupTier(path: string, tier: number) {
+  const res = await fetch(`${API_BASE}/files/backup-tier`, {
+    method: 'POST',
+    headers: await writeHeaders(),
+    body: JSON.stringify({ path, tier }),
+  })
+  if (!res.ok) throw new Error('Failed to set backup tier')
+  return res.json()
+}
+
+export async function listBackupTiers(): Promise<Record<string, number>> {
+  const res = await fetch(`${API_BASE}/backup-tiers`, { headers: authHeaders() })
+  if (!res.ok) throw new Error('Failed to list backup tiers')
+  return res.json()
+}
+
 export async function createShare(path: string, safe = false, expiresIn = 168, mode = 'download'): Promise<{ token: string; url: string; password?: string }> {
   const res = await fetch(`${API_BASE}/shares`, {
     method: 'POST',

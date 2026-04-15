@@ -15,14 +15,16 @@ interface Props {
   onMakePrivate?: () => void
   onMakePublic?: () => void
   onExtract?: () => void
+  onToggleOffsite?: () => void
   onClose: () => void
   isDir: boolean
   canPreview: boolean
   isPrivate?: boolean
   isZip?: boolean
+  offsiteBackup?: boolean
 }
 
-export default function ContextMenu({ x, y, onPreview, onShare, onSafeShare, onDownload, onCut, onCopy, onRename, onDelete, onQuickAccess, onMakePrivate, onMakePublic, onExtract, onClose, isDir, canPreview, isPrivate, isZip }: Props) {
+export default function ContextMenu({ x, y, onPreview, onShare, onSafeShare, onDownload, onCut, onCopy, onRename, onDelete, onQuickAccess, onMakePrivate, onMakePublic, onExtract, onToggleOffsite, onClose, isDir, canPreview, isPrivate, isZip, offsiteBackup }: Props) {
   const ref = useRef<HTMLDivElement>(null)
 
   const isMobile = typeof window !== 'undefined' && window.innerWidth < 768
@@ -119,6 +121,17 @@ export default function ContextMenu({ x, y, onPreview, onShare, onSafeShare, onD
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 11V7a4 4 0 118 0m-4 8v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2z" />
           </svg>
           Make Public
+        </button>
+      )}
+      {isDir && onToggleOffsite && (
+        <button
+          onClick={onToggleOffsite}
+          className="w-full text-left px-4 py-3 md:px-3 md:py-2 text-sm hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center gap-2"
+        >
+          <svg className={`w-4 h-4 ${offsiteBackup ? 'text-blue-500' : 'text-gray-500'}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 15a4 4 0 004 4h9a5 5 0 10-.1-9.999 5.002 5.002 0 10-9.78 2.096A4.001 4.001 0 003 15z" />
+          </svg>
+          {offsiteBackup ? 'Remove from Offsite Backup' : 'Add to Offsite Backup'}
         </button>
       )}
       {isZip && onExtract && (
