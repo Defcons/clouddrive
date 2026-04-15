@@ -960,9 +960,11 @@ export default function FileExplorer({ initialPath, onLogout }: { initialPath: s
                             </svg>
                           )}
                           {file.backupTier === 2 && !file.isPrivate && (
-                            <svg className="w-2.5 h-2.5 text-blue-500 absolute -bottom-0.5 -right-0.5" fill="currentColor" viewBox="0 0 20 20" title="Offsite backup">
-                              <path d="M5.5 16a3.5 3.5 0 01-.369-6.98 4 4 0 117.753-1.977A4.5 4.5 0 1113.5 16h-8z" />
-                            </svg>
+                            <span title="Offsite backup" className="absolute -bottom-0.5 -right-0.5">
+                              <svg className="w-2.5 h-2.5 text-blue-500" fill="currentColor" viewBox="0 0 20 20">
+                                <path d="M5.5 16a3.5 3.5 0 01-.369-6.98 4 4 0 117.753-1.977A4.5 4.5 0 1113.5 16h-8z" />
+                              </svg>
+                            </span>
                           )}
                         </div>
                         {renaming === file.path ? (
