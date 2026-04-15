@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import type { FileItem as FileItemType, ViewMode, Clipboard, TAG_COLORS } from '../types'
-import { listFiles, downloadFile, uploadFiles, createFolder, renameFile, deleteFile, logout, isPreviewable, addQuickAccess, setFolderPrivate, removeFolderPrivate, moveFiles, copyFiles, extractZip, compressFiles, setFileTags, getDiskUsage, getPreviewUrl } from '../api'
+import { listFiles, downloadFile, uploadFiles, createFolder, renameFile, deleteFile, logout, isPreviewable, addQuickAccess, setFolderPrivate, removeFolderPrivate, moveFiles, copyFiles, extractZip, compressFiles, setFileTags, getDiskUsage, getPreviewUrl, setBackupTier } from '../api'
 import Breadcrumb from './Breadcrumb'
 import Toolbar from './Toolbar'
 import FileIcon from './FileIcon'
@@ -416,6 +416,19 @@ export default function FileExplorer({ initialPath, onLogout }: { initialPath: s
       await refresh()
     } catch {
       setError('Failed to make folder public')
+    }
+  }
+
+  const handleToggleOffsite = async (file: FileItemType) => {
+    setContextMenu(null)
+    const currentlyOffsite = file.backupTier === 2
+    const newTier = currentlyOffsite ? 0 : 2
+    try {
+      await setBackupTier(file.path, newTier)
+      toast.success(currentlyOffsite ? `Removed "${file.name}" from offsite backup` : `Added "${file.name}" to offsite backup`)
+      await refresh()
+    } catch {
+      toast.error('Failed to update backup settings')
     }
   }
 
@@ -946,6 +959,11 @@ export default function FileExplorer({ initialPath, onLogout }: { initialPath: s
                               <path fillRule="evenodd" d="M5 9V7a5 5 0 0110 0v2a2 2 0 012 2v5a2 2 0 01-2 2H5a2 2 0 01-2-2v-5a2 2 0 012-2zm8-2v2H7V7a3 3 0 016 0z" clipRule="evenodd" />
                             </svg>
                           )}
+                          {file.backupTier === 2 && !file.isPrivate && (
+                            <svg className="w-2.5 h-2.5 text-blue-500 absolute -bottom-0.5 -right-0.5" fill="currentColor" viewBox="0 0 20 20" title="Offsite backup">
+                              <path d="M5.5 16a3.5 3.5 0 01-.369-6.98 4 4 0 117.753-1.977A4.5 4.5 0 1113.5 16h-8z" />
+                            </svg>
+                          )}
                         </div>
                         {renaming === file.path ? (
                           <input
@@ -1141,6 +1159,8 @@ export default function FileExplorer({ initialPath, onLogout }: { initialPath: s
           onQuickAccess={() => handleQuickAccess(contextMenu.file)}
           onMakePrivate={() => handleMakePrivate(contextMenu.file)}
           onMakePublic={() => handleMakePublic(contextMenu.file)}
+          onToggleOffsite={() => handleToggleOffsite(contextMenu.file)}
+          offsiteBackup={contextMenu.file.backupTier === 2}
           isPrivate={contextMenu.file.isPrivate}
           onClose={() => setContextMenu(null)}
         />

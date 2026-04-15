@@ -1,4 +1,4 @@
-export const APP_VERSION = '0.0.29'
+export const APP_VERSION = '0.0.30'
 
 export interface ChangelogEntry {
   version: string
@@ -7,6 +7,18 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {
+    version: '0.0.30',
+    date: '2026-04-15',
+    changes: [
+      'Offsite backup flag per folder — right-click any folder to toggle inclusion in nightly Hetzner backup',
+      'Blue cloud icon appears on folders marked for offsite backup',
+      'Subfolders inherit their parent\'s offsite flag automatically',
+      'Backup tier stored in .backup-tiers.json at storage root, read by nightly restic job',
+      'ZFS snapshots now cover CloudDrive data every 15min/hourly/daily/weekly/monthly via sanoid',
+      'Offsite layer: nightly restic to Hetzner Storage Box includes vzdumps + flagged CloudDrive folders + Immich',
+    ],
+  },
   {
     version: '0.0.29',
     date: '2026-04-05',

@@ -77,6 +77,7 @@ func main() {
 	trashStore := services.NewTrashStore(storageRoot)
 	tagStore := services.NewTagStore(storageRoot)
 	notifStore := services.NewNotificationStore(storageRoot)
+	tierStore := services.NewBackupTierStore(storageRoot)
 
 	// Clean expired trash items on startup
 	trashStore.CleanExpired()
@@ -88,7 +89,7 @@ func main() {
 	// Handlers
 	authHandler := handlers.NewAuthHandler(userStore, jwtSecret, loginLimiter, auditLog)
 	authMiddleware := middleware.NewAuthMiddleware(jwtSecret, userStore)
-	fileHandler := handlers.NewFileHandler(storageRoot, permStore, auditLog, trashStore, tagStore)
+	fileHandler := handlers.NewFileHandler(storageRoot, permStore, auditLog, trashStore, tagStore, tierStore)
 	diskHandler := handlers.NewDiskHandler(storageRoot)
 	shareHandler := handlers.NewShareHandler(storageRoot, auditLog)
 	versionHandler := handlers.NewVersionHandler()
@@ -96,6 +97,7 @@ func main() {
 	auditHandler := handlers.NewAuditHandler(auditLog)
 	trashHandler := handlers.NewTrashHandler(trashStore, auditLog)
 	notifHandler := handlers.NewNotificationHandler(notifStore)
+	tierHandler := handlers.NewBackupTierHandler(tierStore, auditLog)
 
 	mux := http.NewServeMux()
 
@@ -152,6 +154,11 @@ func main() {
 
 	// Audit log (admin only)
 	mux.HandleFunc("GET /api/audit", authMiddleware.Wrap(auditHandler.GetLogs))
+
+	// Backup tiers
+	mux.HandleFunc("GET /api/files/backup-tier", authMiddleware.Wrap(tierHandler.Get))
+	mux.HandleFunc("GET /api/backup-tiers", authMiddleware.Wrap(tierHandler.List))
+	mux.HandleFunc("POST /api/files/backup-tier", protectedWrite(tierHandler.Set))
 
 	// Version (public — for update notifier polling)
 	mux.HandleFunc("GET /api/version", versionHandler.Info)

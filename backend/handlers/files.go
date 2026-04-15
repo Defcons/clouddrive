@@ -17,23 +17,25 @@ import (
 )
 
 type FileHandler struct {
-	root      string
-	permStore *services.PermissionStore
-	audit     *services.AuditLogger
-	trash     *services.TrashStore
-	tags      *services.TagStore
+	root       string
+	permStore  *services.PermissionStore
+	audit      *services.AuditLogger
+	trash      *services.TrashStore
+	tags       *services.TagStore
+	tierStore  *services.BackupTierStore
 }
 
 type FileInfo struct {
-	Name      string `json:"name"`
-	Path      string `json:"path"`
-	IsDir     bool   `json:"isDir"`
-	Size      int64  `json:"size"`
-	CreatedAt int64  `json:"createdAt"`
-	ModTime   int64  `json:"modTime"`
-	ItemCount *int    `json:"itemCount,omitempty"`
-	IsPrivate bool    `json:"isPrivate,omitempty"`
-	Tags      []string `json:"tags,omitempty"`
+	Name       string   `json:"name"`
+	Path       string   `json:"path"`
+	IsDir      bool     `json:"isDir"`
+	Size       int64    `json:"size"`
+	CreatedAt  int64    `json:"createdAt"`
+	ModTime    int64    `json:"modTime"`
+	ItemCount  *int     `json:"itemCount,omitempty"`
+	IsPrivate  bool     `json:"isPrivate,omitempty"`
+	Tags       []string `json:"tags,omitempty"`
+	BackupTier int      `json:"backupTier,omitempty"`
 }
 
 // getCreationTime tries to get the file creation/change time, falls back to ModTime
@@ -49,8 +51,8 @@ func getCreationTime(info os.FileInfo) int64 {
 	return info.ModTime().UnixMilli()
 }
 
-func NewFileHandler(root string, permStore *services.PermissionStore, audit *services.AuditLogger, trash *services.TrashStore, tags *services.TagStore) *FileHandler {
-	return &FileHandler{root: root, permStore: permStore, audit: audit, trash: trash, tags: tags}
+func NewFileHandler(root string, permStore *services.PermissionStore, audit *services.AuditLogger, trash *services.TrashStore, tags *services.TagStore, tierStore *services.BackupTierStore) *FileHandler {
+	return &FileHandler{root: root, permStore: permStore, audit: audit, trash: trash, tags: tags, tierStore: tierStore}
 }
 
 func getClientIP(r *http.Request) string {
@@ -184,6 +186,11 @@ func (h *FileHandler) List(w http.ResponseWriter, r *http.Request) {
 		if h.tags != nil {
 			if t := h.tags.GetTags(entryPath); len(t) > 0 {
 				fi.Tags = t
+			}
+		}
+		if h.tierStore != nil && entry.IsDir() {
+			if tier := h.tierStore.GetTier(entryPath); tier > 0 {
+				fi.BackupTier = tier
 			}
 		}
 		files = append(files, fi)
