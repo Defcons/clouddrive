@@ -49,7 +49,11 @@ async function writeHeadersNoContent(): Promise<Record<string, string>> {
   return { 'X-CSRF-Token': csrf }
 }
 
-export async function login(username: string, password: string) {
+export type LoginResult =
+  | { mfaRequired: true; mfaToken: string }
+  | { mfaRequired: false; username: string; role: string; homeFolder: string }
+
+export async function login(username: string, password: string): Promise<LoginResult> {
   const res = await fetch(`${API_BASE}/auth/login`, {
     ...FETCH_OPTS,
     method: 'POST',
@@ -59,13 +63,120 @@ export async function login(username: string, password: string) {
   if (res.status === 429) throw new Error('Too many login attempts. Try again later.')
   if (!res.ok) throw new Error('Invalid credentials')
   const data = await res.json()
+  if (data.mfa_required) {
+    return { mfaRequired: true, mfaToken: data.mfa_token }
+  }
   currentUser = {
     username: data.username,
     role: data.role,
     homeFolder: data.homeFolder,
   }
-  csrfToken = null // force CSRF re-issue for the new session
-  return data
+  csrfToken = null
+  return { mfaRequired: false, ...currentUser }
+}
+
+/**
+ * Submit a TOTP code (or backup code) to finish login after the password step
+ * returned mfaRequired. On success the session cookie is set server-side and
+ * the user is considered authenticated.
+ */
+export async function challengeMfa(args: {
+  mfaToken: string
+  code?: string
+  backupCode?: string
+  trustDevice?: boolean
+}): Promise<{ username: string; role: string; homeFolder: string }> {
+  const res = await fetch(`${API_BASE}/auth/mfa/challenge`, {
+    ...FETCH_OPTS,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      mfa_token: args.mfaToken,
+      code: args.code || '',
+      backup_code: args.backupCode || '',
+      trust_device: !!args.trustDevice,
+    }),
+  })
+  if (res.status === 429) throw new Error('Too many attempts. Try again later.')
+  if (!res.ok) throw new Error('Invalid code')
+  const data = await res.json()
+  currentUser = {
+    username: data.username,
+    role: data.role,
+    homeFolder: data.homeFolder,
+  }
+  csrfToken = null
+  return currentUser
+}
+
+// ---- MFA management (inside the authenticated app) ----
+
+export type MfaStatus = { enabled: boolean; backupCodesRemaining: number }
+
+export async function getMfaStatus(): Promise<MfaStatus> {
+  const res = await fetch(`${API_BASE}/auth/mfa/status`, FETCH_OPTS)
+  if (!res.ok) return { enabled: false, backupCodesRemaining: 0 }
+  return res.json()
+}
+
+export async function startMfaSetup(currentPassword: string): Promise<{
+  secret: string
+  qrCodeDataUrl: string
+  otpAuthUrl: string
+}> {
+  const res = await fetch(`${API_BASE}/auth/mfa/setup`, {
+    ...FETCH_OPTS,
+    method: 'POST',
+    headers: await writeHeaders(),
+    body: JSON.stringify({ currentPassword }),
+  })
+  if (!res.ok) {
+    const text = await res.text()
+    throw new Error(text || 'Failed to start MFA setup')
+  }
+  return res.json()
+}
+
+export async function confirmMfaSetup(secret: string, code: string): Promise<{
+  enabled: boolean
+  backupCodes: string[]
+}> {
+  const res = await fetch(`${API_BASE}/auth/mfa/confirm`, {
+    ...FETCH_OPTS,
+    method: 'POST',
+    headers: await writeHeaders(),
+    body: JSON.stringify({ secret, code }),
+  })
+  if (!res.ok) throw new Error('Invalid code — try again')
+  return res.json()
+}
+
+export async function disableMfa(currentPassword: string) {
+  const res = await fetch(`${API_BASE}/auth/mfa/disable`, {
+    ...FETCH_OPTS,
+    method: 'POST',
+    headers: await writeHeaders(),
+    body: JSON.stringify({ currentPassword }),
+  })
+  if (!res.ok) {
+    const text = await res.text()
+    throw new Error(text || 'Failed to disable MFA')
+  }
+  return res.json()
+}
+
+export async function regenerateBackupCodes(currentPassword: string): Promise<{ backupCodes: string[] }> {
+  const res = await fetch(`${API_BASE}/auth/mfa/backup/regenerate`, {
+    ...FETCH_OPTS,
+    method: 'POST',
+    headers: await writeHeaders(),
+    body: JSON.stringify({ currentPassword }),
+  })
+  if (!res.ok) {
+    const text = await res.text()
+    throw new Error(text || 'Failed to regenerate backup codes')
+  }
+  return res.json()
 }
 
 export async function checkAuth(): Promise<boolean> {

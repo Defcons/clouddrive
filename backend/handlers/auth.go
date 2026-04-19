@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"clouddrive/middleware"
+	"clouddrive/models"
 	"clouddrive/services"
 	"encoding/json"
 	"log/slog"
@@ -13,25 +14,27 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 )
 
-// JWTLifetime is the token lifetime. Reduced from 7d to 24h to limit blast
-// radius if a cookie is somehow stolen.
+// JWTLifetime is the session lifetime. Reduced from 7d to 24h.
 const JWTLifetime = 24 * time.Hour
+
+// mfaChallengeLifetime is how long the user has after entering password to
+// submit their TOTP code. Short on purpose.
+const mfaChallengeLifetime = 5 * time.Minute
 
 type RateLimitResetter interface {
 	Reset(r *http.Request)
 }
 
 type AuthHandler struct {
-	userStore   *services.UserStore
-	jwtSecret   []byte
-	rateLimiter RateLimitResetter
-	audit       *services.AuditLogger
+	userStore    *services.UserStore
+	jwtSecret    []byte
+	rateLimiter  RateLimitResetter
+	audit        *services.AuditLogger
 	cookieSecure bool
+	mfa          *MfaHandler // non-nil; used to check trusted-device cookie
 }
 
-func NewAuthHandler(userStore *services.UserStore, jwtSecret string, rateLimiter RateLimitResetter, audit *services.AuditLogger) *AuthHandler {
-	// Secure cookies require HTTPS. In production (behind CF Tunnel + NPM) this
-	// is always true, but disable for local dev where Go may be hit over HTTP.
+func NewAuthHandler(userStore *services.UserStore, jwtSecret string, rateLimiter RateLimitResetter, audit *services.AuditLogger, mfa *MfaHandler) *AuthHandler {
 	secure := os.Getenv("COOKIE_INSECURE") != "1"
 	return &AuthHandler{
 		userStore:    userStore,
@@ -39,12 +42,12 @@ func NewAuthHandler(userStore *services.UserStore, jwtSecret string, rateLimiter
 		rateLimiter:  rateLimiter,
 		audit:        audit,
 		cookieSecure: secure,
+		mfa:          mfa,
 	}
 }
 
 func clientIP(r *http.Request) string {
 	if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
-		// Take the left-most value (closest to the real client).
 		if comma := strings.Index(xff, ","); comma >= 0 {
 			return strings.TrimSpace(xff[:comma])
 		}
@@ -82,6 +85,49 @@ func (h *AuthHandler) clearAuthCookie(w http.ResponseWriter) {
 	})
 }
 
+// signSessionToken mints the main session JWT carried in the auth cookie.
+func (h *AuthHandler) signSessionToken(user *models.User) (string, error) {
+	token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
+		"sub":        user.Username,
+		"role":       user.Role,
+		"homeFolder": user.HomeFolder,
+		"pwv":        user.PwVersion,
+		"exp":        time.Now().Add(JWTLifetime).Unix(),
+		"iat":        time.Now().Unix(),
+	})
+	return token.SignedString(h.jwtSecret)
+}
+
+// issueSession writes the session cookie and the user-info JSON. Shared by
+// Login (MFA-disabled path) and MfaHandler.Challenge (MFA-enabled path).
+func (h *AuthHandler) issueSession(w http.ResponseWriter, user *models.User) error {
+	tokenString, err := h.signSessionToken(user)
+	if err != nil {
+		return err
+	}
+	h.setAuthCookie(w, tokenString)
+	w.Header().Set("Content-Type", "application/json")
+	return json.NewEncoder(w).Encode(map[string]interface{}{
+		"username":   user.Username,
+		"role":       user.Role,
+		"homeFolder": user.HomeFolder,
+	})
+}
+
+// signMfaChallengeToken mints a short-lived JWT returned to the client when
+// MFA is required. The client submits it along with the TOTP code to
+// /api/auth/mfa/challenge. This is NOT the session cookie — it carries no
+// file-access privileges, only proves the user got past the password step.
+func (h *AuthHandler) signMfaChallengeToken(username string) (string, error) {
+	token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
+		"sub":  username,
+		"kind": "mfa_challenge",
+		"exp":  time.Now().Add(mfaChallengeLifetime).Unix(),
+		"iat":  time.Now().Unix(),
+	})
+	return token.SignedString(h.jwtSecret)
+}
+
 func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		Username string `json:"username"`
@@ -103,43 +149,60 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if h.audit != nil {
-		h.audit.Log("LOGIN_OK", user.Username, ip, "")
+	// If MFA is enabled, we either:
+	//   (a) have a valid trusted-device cookie from the last 30 days → skip MFA
+	//   (b) return mfa_required + mfa_token so client can submit TOTP next
+	if user.MfaEnabled {
+		if h.mfa != nil && h.mfa.HasValidTrustedDevice(r, user.Username, user.PwVersion) {
+			// Trusted device — issue session directly.
+			if h.audit != nil {
+				h.audit.Log("LOGIN_OK", user.Username, ip, "trusted device")
+			}
+			if h.rateLimiter != nil {
+				h.rateLimiter.Reset(r)
+			}
+			if err := h.issueSession(w, user); err != nil {
+				http.Error(w, "Failed to create session", http.StatusInternalServerError)
+			}
+			return
+		}
+
+		// MFA challenge required.
+		mfaToken, err := h.signMfaChallengeToken(user.Username)
+		if err != nil {
+			http.Error(w, "Failed to start MFA challenge", http.StatusInternalServerError)
+			return
+		}
+		if h.audit != nil {
+			h.audit.Log("MFA_REQUIRED", user.Username, ip, "")
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{
+			"mfa_required": true,
+			"mfa_token":    mfaToken,
+		})
+		return
 	}
 
-	token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
-		"sub":        user.Username,
-		"role":       user.Role,
-		"homeFolder": user.HomeFolder,
-		"pwv":        user.PwVersion,
-		"exp":        time.Now().Add(JWTLifetime).Unix(),
-		"iat":        time.Now().Unix(),
-	})
-
-	tokenString, err := token.SignedString(h.jwtSecret)
-	if err != nil {
-		http.Error(w, "Failed to create token", http.StatusInternalServerError)
-		return
+	if h.audit != nil {
+		h.audit.Log("LOGIN_OK", user.Username, ip, "")
 	}
 
 	if h.rateLimiter != nil {
 		h.rateLimiter.Reset(r)
 	}
 
-	h.setAuthCookie(w, tokenString)
-
-	w.Header().Set("Content-Type", "application/json")
-	if err := json.NewEncoder(w).Encode(map[string]string{
-		"username":   user.Username,
-		"role":       user.Role,
-		"homeFolder": user.HomeFolder,
-	}); err != nil {
-		slog.Warn("encode login response failed", "err", err)
+	if err := h.issueSession(w, user); err != nil {
+		slog.Warn("issue session failed", "err", err)
+		http.Error(w, "Failed to create session", http.StatusInternalServerError)
 	}
 }
 
 func (h *AuthHandler) Logout(w http.ResponseWriter, r *http.Request) {
 	h.clearAuthCookie(w)
+	// Note: trusted-device cookie is NOT cleared on logout — that's the point
+	// of "trust this device." Clearing happens on password change or explicit
+	// MFA disable.
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(map[string]bool{"ok": true})
 }
@@ -177,7 +240,6 @@ func (h *AuthHandler) ChangePassword(w http.ResponseWriter, r *http.Request) {
 
 	if err := h.userStore.ChangePassword(username, req.CurrentPassword, req.NewPassword); err != nil {
 		slog.Info("password change failed", "user", username, "err", err)
-		// Generic error; do not reveal whether username existed or password was wrong.
 		http.Error(w, "Password change failed", http.StatusBadRequest)
 		return
 	}
@@ -186,8 +248,12 @@ func (h *AuthHandler) ChangePassword(w http.ResponseWriter, r *http.Request) {
 		h.audit.Log("PW_CHANGE", username, clientIP(r), "password changed")
 	}
 
-	// PwVersion bump invalidates the current session too — force re-login.
+	// Password change bumps pwv → invalidates session AND all trusted-device
+	// cookies. Clear cookies here so the browser stops sending them.
 	h.clearAuthCookie(w)
+	if h.mfa != nil {
+		h.mfa.clearTrustedDeviceCookie(w)
+	}
 
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(map[string]string{"status": "password changed"})

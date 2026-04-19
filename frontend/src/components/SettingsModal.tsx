@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { getCurrentUser, changePassword } from '../api'
+import MfaSection from './MfaSection'
 
 interface Props {
   onClose: () => void
@@ -142,6 +143,10 @@ export default function SettingsModal({ onClose }: Props) {
               {loading ? 'Changing...' : 'Change Password'}
             </button>
           </form>
+
+          <hr className="border-gray-100 dark:border-gray-700" />
+
+          <MfaSection />
         </div>
       </div>
     </div>
