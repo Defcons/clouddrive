@@ -93,7 +93,8 @@ func main() {
 	csrfMiddleware := middleware.NewCSRFMiddleware()
 	sharePwLimiter := middleware.NewRateLimiter(10, 5*time.Minute, 15*time.Minute)
 
-	authHandler := handlers.NewAuthHandler(userStore, jwtSecret, loginLimiter, auditLog)
+	mfaHandler := handlers.NewMfaHandler(userStore, jwtSecret, auditLog)
+	authHandler := handlers.NewAuthHandler(userStore, jwtSecret, loginLimiter, auditLog, mfaHandler)
 	authMiddleware := middleware.NewAuthMiddleware(jwtSecret, userStore)
 	fileHandler := handlers.NewFileHandler(storageRoot, permStore, auditLog, trashStore, tagStore, tierStore)
 	diskHandler := handlers.NewDiskHandler(storageRoot)
@@ -112,6 +113,7 @@ func main() {
 	}
 
 	registerAuthRoutes(mux, authHandler, authMiddleware, csrfMiddleware, loginLimiter, protectedWrite)
+	registerMfaRoutes(mux, mfaHandler, authHandler, authMiddleware, loginLimiter, protectedWrite)
 	registerFileRoutes(mux, fileHandler, authMiddleware, protectedWrite)
 	registerPermissionRoutes(mux, permHandler, authMiddleware, protectedWrite)
 	registerTrashRoutes(mux, trashHandler, authMiddleware, protectedWrite)
@@ -192,6 +194,18 @@ func registerAuthRoutes(mux *http.ServeMux, h *handlers.AuthHandler, auth *middl
 	mux.HandleFunc("GET /api/auth/check", auth.Wrap(h.Check))
 	mux.HandleFunc("POST /api/auth/change-password", protectedWrite(h.ChangePassword))
 	mux.HandleFunc("GET /api/csrf", auth.Wrap(csrf.GetToken))
+}
+
+func registerMfaRoutes(mux *http.ServeMux, h *handlers.MfaHandler, auth *handlers.AuthHandler, am *middleware.AuthMiddleware, limiter *middleware.RateLimiter, protectedWrite func(http.HandlerFunc) http.HandlerFunc) {
+	// Status + setup/disable/regenerate: all require an existing session.
+	mux.HandleFunc("GET /api/auth/mfa/status", am.Wrap(h.Status))
+	mux.HandleFunc("POST /api/auth/mfa/setup", protectedWrite(h.StartSetup))
+	mux.HandleFunc("POST /api/auth/mfa/confirm", protectedWrite(h.Confirm))
+	mux.HandleFunc("POST /api/auth/mfa/disable", protectedWrite(h.Disable))
+	mux.HandleFunc("POST /api/auth/mfa/backup/regenerate", protectedWrite(h.RegenerateBackup))
+	// Challenge: no session yet — user has only the mfa_token from Login.
+	// Rate limit it the same way we rate limit login.
+	mux.HandleFunc("POST /api/auth/mfa/challenge", limiter.WrapLogin(h.Challenge(auth)))
 }
 
 func registerFileRoutes(mux *http.ServeMux, h *handlers.FileHandler, auth *middleware.AuthMiddleware, protectedWrite func(http.HandlerFunc) http.HandlerFunc) {
