@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { listTrash, restoreFromTrash, deleteFromTrash, emptyTrash } from '../api'
 import type { TrashItem } from '../types'
+import { confirm as confirmModal } from './ConfirmModal'
 
 interface Props {
   onClose: () => void
@@ -49,7 +50,13 @@ export default function TrashView({ onClose, onNavigate }: Props) {
   }
 
   const handleDelete = async (id: string) => {
-    if (!confirm('Permanently delete this item? This cannot be undone.')) return
+    const ok = await confirmModal({
+      title: 'Delete permanently?',
+      message: 'Permanently delete this item? This cannot be undone.',
+      destructive: true,
+      confirmLabel: 'Delete forever',
+    })
+    if (!ok) return
     try {
       await deleteFromTrash(id)
       refresh()
@@ -57,7 +64,13 @@ export default function TrashView({ onClose, onNavigate }: Props) {
   }
 
   const handleEmpty = async () => {
-    if (!confirm('Empty trash? All items will be permanently deleted.')) return
+    const ok = await confirmModal({
+      title: 'Empty trash?',
+      message: 'All items in trash will be permanently deleted. This cannot be undone.',
+      destructive: true,
+      confirmLabel: 'Empty trash',
+    })
+    if (!ok) return
     try {
       await emptyTrash()
       refresh()

@@ -4,14 +4,17 @@ import (
 	"clouddrive/handlers"
 	"clouddrive/middleware"
 	"clouddrive/services"
+	"context"
 	"embed"
 	"fmt"
 	"io/fs"
-	"log"
+	"log/slog"
 	"net/http"
 	"os"
+	"os/signal"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/rs/cors"
@@ -21,7 +24,8 @@ import (
 var staticFiles embed.FS
 
 func main() {
-	// Check for --hash-password utility
+	slog.SetDefault(slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo})))
+
 	if len(os.Args) > 1 && os.Args[1] == "--hash-password" {
 		if len(os.Args) < 3 {
 			fmt.Println("Usage: clouddrive --hash-password <password>")
@@ -46,32 +50,36 @@ func main() {
 		storageRoot = "./data"
 	}
 
+	// JWT secret is mandatory — fail fast if unset or using default.
 	jwtSecret := os.Getenv("JWT_SECRET")
-	if jwtSecret == "" {
-		jwtSecret = "change-me-in-production"
+	if jwtSecret == "" || jwtSecret == "change-me-in-production" {
+		slog.Error("JWT_SECRET must be set to a strong random value (min 32 chars). Refusing to start.")
+		os.Exit(1)
+	}
+	if len(jwtSecret) < 32 {
+		slog.Error("JWT_SECRET is too short; use at least 32 random characters. Refusing to start.")
+		os.Exit(1)
 	}
 
-	// User store setup
 	usersFile := os.Getenv("USERS_FILE")
 	if usersFile == "" {
 		usersFile = filepath.Join(storageRoot, "users.json")
 	}
 
-	// Backward compatibility: migrate from env vars if users.json doesn't exist
 	username := os.Getenv("CLOUDDRIVE_USER")
 	password := os.Getenv("CLOUDDRIVE_PASS")
 	if username != "" && password != "" {
 		if err := services.InitFromEnv(usersFile, username, password); err != nil {
-			log.Printf("Warning: failed to migrate env vars to users.json: %v", err)
+			slog.Warn("failed to migrate env vars to users.json", "err", err)
 		}
 	}
 
 	userStore, err := services.NewUserStore(usersFile)
 	if err != nil {
-		log.Fatalf("Failed to load user store: %v", err)
+		slog.Error("failed to load user store", "err", err)
+		os.Exit(1)
 	}
 
-	// Services
 	permStore := services.NewPermissionStore(storageRoot)
 	auditLog := services.NewAuditLogger(storageRoot)
 	trashStore := services.NewTrashStore(storageRoot)
@@ -79,19 +87,17 @@ func main() {
 	notifStore := services.NewNotificationStore(storageRoot)
 	tierStore := services.NewBackupTierStore(storageRoot)
 
-	// Clean expired trash items on startup
 	trashStore.CleanExpired()
 
-	// Rate limiter: 5 attempts per 2 minutes, 5 minute lockout
 	loginLimiter := middleware.NewRateLimiter(5, 2*time.Minute, 5*time.Minute)
 	csrfMiddleware := middleware.NewCSRFMiddleware()
+	sharePwLimiter := middleware.NewRateLimiter(10, 5*time.Minute, 15*time.Minute)
 
-	// Handlers
 	authHandler := handlers.NewAuthHandler(userStore, jwtSecret, loginLimiter, auditLog)
 	authMiddleware := middleware.NewAuthMiddleware(jwtSecret, userStore)
 	fileHandler := handlers.NewFileHandler(storageRoot, permStore, auditLog, trashStore, tagStore, tierStore)
 	diskHandler := handlers.NewDiskHandler(storageRoot)
-	shareHandler := handlers.NewShareHandler(storageRoot, auditLog)
+	shareHandler := handlers.NewShareHandler(storageRoot, auditLog, sharePwLimiter)
 	versionHandler := handlers.NewVersionHandler()
 	permHandler := handlers.NewPermissionsHandler(permStore, auditLog)
 	auditHandler := handlers.NewAuditHandler(auditLog)
@@ -101,85 +107,22 @@ func main() {
 
 	mux := http.NewServeMux()
 
-	// Helper: auth + CSRF protection for state-changing endpoints
 	protectedWrite := func(handler http.HandlerFunc) http.HandlerFunc {
 		return authMiddleware.Wrap(csrfMiddleware.Protect(handler))
 	}
 
-	// Auth
-	mux.HandleFunc("POST /api/auth/login", loginLimiter.WrapLogin(authHandler.Login))
-	mux.HandleFunc("GET /api/auth/check", authMiddleware.Wrap(authHandler.Check))
-	mux.HandleFunc("POST /api/auth/change-password", protectedWrite(authHandler.ChangePassword))
+	registerAuthRoutes(mux, authHandler, authMiddleware, csrfMiddleware, loginLimiter, protectedWrite)
+	registerFileRoutes(mux, fileHandler, authMiddleware, protectedWrite)
+	registerPermissionRoutes(mux, permHandler, authMiddleware, protectedWrite)
+	registerTrashRoutes(mux, trashHandler, authMiddleware, protectedWrite)
+	registerShareRoutes(mux, shareHandler, authMiddleware, protectedWrite)
+	registerNotificationRoutes(mux, notifHandler, authMiddleware, protectedWrite)
+	registerMiscRoutes(mux, auditHandler, tierHandler, diskHandler, versionHandler, authMiddleware, protectedWrite)
 
-	// CSRF token endpoint
-	mux.HandleFunc("GET /api/csrf", authMiddleware.Wrap(csrfMiddleware.GetToken))
-
-	// Files (protected — reads use auth only, writes use auth + CSRF)
-	mux.HandleFunc("GET /api/files", authMiddleware.Wrap(fileHandler.List))
-	mux.HandleFunc("GET /api/files/download", authMiddleware.Wrap(fileHandler.Download))
-	mux.HandleFunc("GET /api/files/preview", authMiddleware.Wrap(fileHandler.Preview))
-	mux.HandleFunc("GET /api/files/search", authMiddleware.Wrap(fileHandler.Search))
-	mux.HandleFunc("GET /api/files/recent", authMiddleware.Wrap(fileHandler.Recent))
-	mux.HandleFunc("GET /api/files/tags", authMiddleware.Wrap(fileHandler.GetTags))
-	mux.HandleFunc("POST /api/files/upload", protectedWrite(fileHandler.Upload))
-	mux.HandleFunc("POST /api/files/mkdir", protectedWrite(fileHandler.Mkdir))
-	mux.HandleFunc("POST /api/files/rename", protectedWrite(fileHandler.Rename))
-	mux.HandleFunc("POST /api/files/move", protectedWrite(fileHandler.Move))
-	mux.HandleFunc("POST /api/files/copy", protectedWrite(fileHandler.Copy))
-	mux.HandleFunc("POST /api/files/extract", protectedWrite(fileHandler.Extract))
-	mux.HandleFunc("POST /api/files/compress", protectedWrite(fileHandler.Compress))
-	mux.HandleFunc("POST /api/files/tags", protectedWrite(fileHandler.SetTags))
-	mux.HandleFunc("DELETE /api/files", protectedWrite(fileHandler.Delete))
-
-	// Permissions (protected)
-	mux.HandleFunc("POST /api/files/permissions", protectedWrite(permHandler.SetPrivate))
-	mux.HandleFunc("DELETE /api/files/permissions", protectedWrite(permHandler.RemovePrivate))
-	mux.HandleFunc("GET /api/files/permissions", authMiddleware.Wrap(permHandler.GetPermission))
-
-	// Trash
-	mux.HandleFunc("GET /api/trash", authMiddleware.Wrap(trashHandler.List))
-	mux.HandleFunc("POST /api/trash/restore", protectedWrite(trashHandler.Restore))
-	mux.HandleFunc("DELETE /api/trash", protectedWrite(trashHandler.Delete))
-	mux.HandleFunc("DELETE /api/trash/empty", protectedWrite(trashHandler.Empty))
-
-	// Shares (management — protected)
-	mux.HandleFunc("POST /api/shares", protectedWrite(shareHandler.Create))
-	mux.HandleFunc("GET /api/shares", authMiddleware.Wrap(shareHandler.List))
-	mux.HandleFunc("POST /api/shares/revoke", protectedWrite(shareHandler.Revoke))
-
-	// Notifications
-	mux.HandleFunc("GET /api/notifications", authMiddleware.Wrap(notifHandler.GetAll))
-	mux.HandleFunc("GET /api/notifications/unread", authMiddleware.Wrap(notifHandler.GetUnreadCount))
-	mux.HandleFunc("POST /api/notifications/read", protectedWrite(notifHandler.MarkRead))
-
-	// Audit log (admin only)
-	mux.HandleFunc("GET /api/audit", authMiddleware.Wrap(auditHandler.GetLogs))
-
-	// Backup tiers
-	mux.HandleFunc("GET /api/files/backup-tier", authMiddleware.Wrap(tierHandler.Get))
-	mux.HandleFunc("GET /api/backup-tiers", authMiddleware.Wrap(tierHandler.List))
-	mux.HandleFunc("POST /api/files/backup-tier", protectedWrite(tierHandler.Set))
-
-	// Version (public — for update notifier polling)
-	mux.HandleFunc("GET /api/version", versionHandler.Info)
-
-	// Share (public — no auth)
-	mux.HandleFunc("/share/", func(w http.ResponseWriter, r *http.Request) {
-		// Route upload requests to the upload handler
-		if r.Method == "POST" && strings.Contains(r.URL.Path, "/upload") {
-			shareHandler.Upload(w, r)
-			return
-		}
-		shareHandler.Download(w, r)
-	})
-
-	// Disk
-	mux.HandleFunc("GET /api/disk", authMiddleware.Wrap(diskHandler.Usage))
-
-	// Serve embedded SPA
 	staticFS, err := fs.Sub(staticFiles, "static")
 	if err != nil {
-		log.Fatal(err)
+		slog.Error("failed to load static files", "err", err)
+		os.Exit(1)
 	}
 	fileServer := http.FileServer(http.FS(staticFS))
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
@@ -194,15 +137,120 @@ func main() {
 		fileServer.ServeHTTP(w, r)
 	})
 
+	// CORS: frontend is same-origin (served by this Go server), so credentials
+	// flow works without CORS. CORS is here only for public /share/ endpoints.
+	// Do NOT combine AllowCredentials with wildcard origins.
+	allowedOrigins := strings.Split(os.Getenv("ALLOWED_ORIGINS"), ",")
+	for i := range allowedOrigins {
+		allowedOrigins[i] = strings.TrimSpace(allowedOrigins[i])
+	}
+	if len(allowedOrigins) == 0 || allowedOrigins[0] == "" {
+		allowedOrigins = []string{"*"}
+	}
 	c := cors.New(cors.Options{
-		AllowedOrigins:   []string{"*"},
+		AllowedOrigins:   allowedOrigins,
 		AllowedMethods:   []string{"GET", "POST", "DELETE", "OPTIONS"},
 		AllowedHeaders:   []string{"Authorization", "Content-Type", "X-CSRF-Token"},
-		AllowCredentials: true,
+		AllowCredentials: false,
 	})
 
 	handler := middleware.SecureHeaders(c.Handler(mux))
 
-	log.Printf("CloudDrive starting on :%s (storage: %s)", port, storageRoot)
-	log.Fatal(http.ListenAndServe(":"+port, handler))
+	srv := &http.Server{
+		Addr:              ":" + port,
+		Handler:           handler,
+		ReadHeaderTimeout: 10 * time.Second,
+		IdleTimeout:       120 * time.Second,
+	}
+
+	// Graceful shutdown
+	go func() {
+		sig := make(chan os.Signal, 1)
+		signal.Notify(sig, syscall.SIGTERM, syscall.SIGINT)
+		<-sig
+		slog.Info("shutting down")
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		if err := srv.Shutdown(ctx); err != nil {
+			slog.Warn("graceful shutdown failed", "err", err)
+		}
+		auditLog.Close()
+	}()
+
+	slog.Info("CloudDrive starting", "port", port, "storage", storageRoot)
+	if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+		slog.Error("listen failed", "err", err)
+		os.Exit(1)
+	}
+}
+
+// ---- Route registration (extracted from main for clarity) ----
+
+func registerAuthRoutes(mux *http.ServeMux, h *handlers.AuthHandler, auth *middleware.AuthMiddleware, csrf *middleware.CSRFMiddleware, limiter *middleware.RateLimiter, protectedWrite func(http.HandlerFunc) http.HandlerFunc) {
+	mux.HandleFunc("POST /api/auth/login", limiter.WrapLogin(h.Login))
+	mux.HandleFunc("POST /api/auth/logout", h.Logout)
+	mux.HandleFunc("GET /api/auth/check", auth.Wrap(h.Check))
+	mux.HandleFunc("POST /api/auth/change-password", protectedWrite(h.ChangePassword))
+	mux.HandleFunc("GET /api/csrf", auth.Wrap(csrf.GetToken))
+}
+
+func registerFileRoutes(mux *http.ServeMux, h *handlers.FileHandler, auth *middleware.AuthMiddleware, protectedWrite func(http.HandlerFunc) http.HandlerFunc) {
+	mux.HandleFunc("GET /api/files", auth.Wrap(h.List))
+	mux.HandleFunc("GET /api/files/download", auth.Wrap(h.Download))
+	mux.HandleFunc("GET /api/files/preview", auth.Wrap(h.Preview))
+	mux.HandleFunc("GET /api/files/search", auth.Wrap(h.Search))
+	mux.HandleFunc("GET /api/files/recent", auth.Wrap(h.Recent))
+	mux.HandleFunc("GET /api/files/tags", auth.Wrap(h.GetTags))
+	mux.HandleFunc("POST /api/files/upload", protectedWrite(h.Upload))
+	mux.HandleFunc("POST /api/files/mkdir", protectedWrite(h.Mkdir))
+	mux.HandleFunc("POST /api/files/rename", protectedWrite(h.Rename))
+	mux.HandleFunc("POST /api/files/move", protectedWrite(h.Move))
+	mux.HandleFunc("POST /api/files/copy", protectedWrite(h.Copy))
+	mux.HandleFunc("POST /api/files/extract", protectedWrite(h.Extract))
+	mux.HandleFunc("POST /api/files/compress", protectedWrite(h.Compress))
+	mux.HandleFunc("POST /api/files/tags", protectedWrite(h.SetTags))
+	mux.HandleFunc("DELETE /api/files", protectedWrite(h.Delete))
+}
+
+func registerPermissionRoutes(mux *http.ServeMux, h *handlers.PermissionsHandler, auth *middleware.AuthMiddleware, protectedWrite func(http.HandlerFunc) http.HandlerFunc) {
+	mux.HandleFunc("POST /api/files/permissions", protectedWrite(h.SetPrivate))
+	mux.HandleFunc("DELETE /api/files/permissions", protectedWrite(h.RemovePrivate))
+	mux.HandleFunc("GET /api/files/permissions", auth.Wrap(h.GetPermission))
+}
+
+func registerTrashRoutes(mux *http.ServeMux, h *handlers.TrashHandler, auth *middleware.AuthMiddleware, protectedWrite func(http.HandlerFunc) http.HandlerFunc) {
+	mux.HandleFunc("GET /api/trash", auth.Wrap(h.List))
+	mux.HandleFunc("POST /api/trash/restore", protectedWrite(h.Restore))
+	mux.HandleFunc("DELETE /api/trash", protectedWrite(h.Delete))
+	mux.HandleFunc("DELETE /api/trash/empty", protectedWrite(h.Empty))
+}
+
+func registerShareRoutes(mux *http.ServeMux, h *handlers.ShareHandler, auth *middleware.AuthMiddleware, protectedWrite func(http.HandlerFunc) http.HandlerFunc) {
+	mux.HandleFunc("POST /api/shares", protectedWrite(h.Create))
+	mux.HandleFunc("GET /api/shares", auth.Wrap(h.List))
+	mux.HandleFunc("POST /api/shares/revoke", protectedWrite(h.Revoke))
+
+	// Public share endpoints (no auth)
+	mux.HandleFunc("/share/", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == "POST" && strings.Contains(r.URL.Path, "/upload") {
+			h.Upload(w, r)
+			return
+		}
+		h.Download(w, r)
+	})
+}
+
+func registerNotificationRoutes(mux *http.ServeMux, h *handlers.NotificationHandler, auth *middleware.AuthMiddleware, protectedWrite func(http.HandlerFunc) http.HandlerFunc) {
+	mux.HandleFunc("GET /api/notifications", auth.Wrap(h.GetAll))
+	mux.HandleFunc("GET /api/notifications/unread", auth.Wrap(h.GetUnreadCount))
+	mux.HandleFunc("POST /api/notifications/read", protectedWrite(h.MarkRead))
+}
+
+func registerMiscRoutes(mux *http.ServeMux, audit *handlers.AuditHandler, tier *handlers.BackupTierHandler, disk *handlers.DiskHandler, version *handlers.VersionHandler, auth *middleware.AuthMiddleware, protectedWrite func(http.HandlerFunc) http.HandlerFunc) {
+	mux.HandleFunc("GET /api/audit", auth.Wrap(audit.GetLogs))
+	mux.HandleFunc("GET /api/files/backup-tier", auth.Wrap(tier.Get))
+	mux.HandleFunc("GET /api/backup-tiers", auth.Wrap(tier.List))
+	mux.HandleFunc("POST /api/files/backup-tier", protectedWrite(tier.Set))
+	mux.HandleFunc("GET /api/disk", auth.Wrap(disk.Usage))
+	mux.HandleFunc("GET /api/version", version.Info)
 }

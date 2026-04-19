@@ -138,13 +138,26 @@ func (s *UserStore) ChangePassword(username, currentPassword, newPassword string
 			}
 			s.users[i].Password = string(hash)
 			s.users[i].PwVersion++
-			s.mu.Unlock()
-			err = s.save()
-			s.mu.Lock()
-			return err
+			// Save under the same lock to avoid a race where another goroutine
+			// mutates s.users between the in-memory update and the disk write.
+			return s.saveLocked()
 		}
 	}
 	return fmt.Errorf("user not found")
+}
+
+// saveLocked writes users.json. Caller must hold s.mu (write-locked).
+func (s *UserStore) saveLocked() error {
+	config := models.UsersConfig{Users: s.users}
+	data, err := json.MarshalIndent(config, "", "  ")
+	if err != nil {
+		return err
+	}
+	tmpPath := s.configPath + ".tmp"
+	if err := os.WriteFile(tmpPath, data, 0600); err != nil {
+		return err
+	}
+	return os.Rename(tmpPath, s.configPath)
 }
 
 func (s *UserStore) GetPwVersion(username string) int {

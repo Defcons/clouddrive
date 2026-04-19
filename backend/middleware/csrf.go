@@ -2,9 +2,10 @@ package middleware
 
 import (
 	"crypto/rand"
+	"crypto/sha256"
+	"crypto/subtle"
 	"encoding/hex"
 	"net/http"
-	"strings"
 	"sync"
 	"time"
 )
@@ -15,7 +16,7 @@ type csrfToken struct {
 }
 
 type CSRFMiddleware struct {
-	tokens map[string]*csrfToken // keyed by JWT token (user session)
+	tokens map[string]*csrfToken // keyed by sha256(session JWT)
 	mu     sync.RWMutex
 }
 
@@ -23,7 +24,6 @@ func NewCSRFMiddleware() *CSRFMiddleware {
 	csrf := &CSRFMiddleware{
 		tokens: make(map[string]*csrfToken),
 	}
-	// Cleanup old tokens every 30 minutes
 	go func() {
 		for {
 			time.Sleep(30 * time.Minute)
@@ -47,49 +47,59 @@ func (c *CSRFMiddleware) cleanup() {
 
 func generateCSRFToken() string {
 	b := make([]byte, 16)
-	rand.Read(b)
+	if _, err := rand.Read(b); err != nil {
+		// On CSPRNG failure, return empty — callers treat as auth failure.
+		return ""
+	}
 	return hex.EncodeToString(b)
 }
 
-func extractBearer(r *http.Request) string {
-	auth := r.Header.Get("Authorization")
-	if auth == "" {
-		return r.URL.Query().Get("token")
+// sessionKey hashes the session JWT to avoid storing it raw in the CSRF map.
+func sessionKey(r *http.Request) string {
+	raw := ExtractToken(r)
+	if raw == "" {
+		return ""
 	}
-	return strings.TrimPrefix(auth, "Bearer ")
+	h := sha256.Sum256([]byte(raw))
+	return hex.EncodeToString(h[:])
 }
 
-// GetToken returns (or creates) a CSRF token for the current session
+// GetToken returns (or creates) a CSRF token for the current session.
 func (c *CSRFMiddleware) GetToken(w http.ResponseWriter, r *http.Request) {
-	sessionKey := extractBearer(r)
-	if sessionKey == "" {
+	key := sessionKey(r)
+	if key == "" {
 		http.Error(w, "Unauthorized", http.StatusUnauthorized)
 		return
 	}
 
 	c.mu.Lock()
-	tok, exists := c.tokens[sessionKey]
-	if !exists || time.Now().Sub(tok.createdAt) > 8*time.Hour {
-		tok = &csrfToken{token: generateCSRFToken(), createdAt: time.Now()}
-		c.tokens[sessionKey] = tok
+	tok, exists := c.tokens[key]
+	if !exists || time.Since(tok.createdAt) > 8*time.Hour {
+		generated := generateCSRFToken()
+		if generated == "" {
+			c.mu.Unlock()
+			http.Error(w, "Failed to generate CSRF token", http.StatusInternalServerError)
+			return
+		}
+		tok = &csrfToken{token: generated, createdAt: time.Now()}
+		c.tokens[key] = tok
 	}
 	c.mu.Unlock()
 
 	w.Header().Set("Content-Type", "application/json")
-	w.Write([]byte(`{"csrfToken":"` + tok.token + `"}`))
+	_, _ = w.Write([]byte(`{"csrfToken":"` + tok.token + `"}`))
 }
 
-// Protect wraps a handler and validates CSRF token on state-changing requests (POST, DELETE)
+// Protect wraps a handler and validates CSRF on state-changing requests.
 func (c *CSRFMiddleware) Protect(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		// Only check state-changing methods
 		if r.Method != "POST" && r.Method != "DELETE" && r.Method != "PUT" && r.Method != "PATCH" {
 			next(w, r)
 			return
 		}
 
-		sessionKey := extractBearer(r)
-		if sessionKey == "" {
+		key := sessionKey(r)
+		if key == "" {
 			http.Error(w, "Unauthorized", http.StatusUnauthorized)
 			return
 		}
@@ -101,10 +111,10 @@ func (c *CSRFMiddleware) Protect(next http.HandlerFunc) http.HandlerFunc {
 		}
 
 		c.mu.RLock()
-		tok, exists := c.tokens[sessionKey]
+		tok, exists := c.tokens[key]
 		c.mu.RUnlock()
 
-		if !exists || tok.token != csrfHeader {
+		if !exists || subtle.ConstantTimeCompare([]byte(tok.token), []byte(csrfHeader)) != 1 {
 			http.Error(w, "Invalid CSRF token", http.StatusForbidden)
 			return
 		}
