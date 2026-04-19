@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log/slog"
 	"mime"
 	"net/http"
 	"os"
@@ -55,9 +56,15 @@ func NewFileHandler(root string, permStore *services.PermissionStore, audit *ser
 	return &FileHandler{root: root, permStore: permStore, audit: audit, trash: trash, tags: tags, tierStore: tierStore}
 }
 
+// getClientIP extracts the client IP, preferring the left-most
+// X-Forwarded-For value (closest to the real client). Returns raw RemoteAddr
+// if no proxy headers are set.
 func getClientIP(r *http.Request) string {
 	if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
-		return xff
+		if comma := strings.Index(xff, ","); comma >= 0 {
+			return strings.TrimSpace(xff[:comma])
+		}
+		return strings.TrimSpace(xff)
 	}
 	if xri := r.Header.Get("X-Real-IP"); xri != "" {
 		return xri
@@ -65,7 +72,10 @@ func getClientIP(r *http.Request) string {
 	return r.RemoteAddr
 }
 
-// safePath resolves and validates a path is within the storage root.
+// safePath resolves reqPath and ensures it stays within the storage root.
+// It also resolves symlinks — if a link points outside the root, the path
+// is rejected. This is critical for preventing zip/download endpoints from
+// being used to exfiltrate files via symlinks placed in user folders.
 func (h *FileHandler) safePath(reqPath string) (string, error) {
 	if reqPath == "" {
 		reqPath = "/"
@@ -80,7 +90,13 @@ func (h *FileHandler) safePath(reqPath string) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("invalid root")
 	}
-	if !strings.HasPrefix(abs, rootAbs) {
+	// EvalSymlinks only works if the path exists; ignore error so we can
+	// validate parent paths for upload/mkdir scenarios.
+	if resolved, err := filepath.EvalSymlinks(abs); err == nil {
+		abs = resolved
+	}
+	// Use separator to avoid /data/evil being accepted for root /data.
+	if abs != rootAbs && !strings.HasPrefix(abs+string(filepath.Separator), rootAbs+string(filepath.Separator)) {
 		return "", fmt.Errorf("path traversal denied")
 	}
 	return abs, nil
@@ -233,38 +249,31 @@ func (h *FileHandler) Download(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if info.IsDir() {
-		// Zip the directory and stream it
 		w.Header().Set("Content-Type", "application/zip")
 		w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="%s.zip"`, info.Name()))
 
 		zw := zip.NewWriter(w)
 		defer zw.Close()
 
-		filepath.Walk(absPath, func(fpath string, finfo os.FileInfo, ferr error) error {
-			if ferr != nil || finfo.IsDir() {
-				return nil
-			}
-			relPath, err := filepath.Rel(absPath, fpath)
-			if err != nil {
-				return nil
-			}
+		walkFilesNoSymlinks(absPath, func(fpath string, finfo os.FileInfo, relPath string) {
 			header, err := zip.FileInfoHeader(finfo)
 			if err != nil {
-				return nil
+				return
 			}
 			header.Name = filepath.ToSlash(filepath.Join(info.Name(), relPath))
 			header.Method = zip.Deflate
 			writer, err := zw.CreateHeader(header)
 			if err != nil {
-				return nil
+				return
 			}
 			file, err := os.Open(fpath)
 			if err != nil {
-				return nil
+				return
 			}
 			defer file.Close()
-			io.Copy(writer, file)
-			return nil
+			if _, err := io.Copy(writer, file); err != nil {
+				slog.Debug("zip copy failed", "err", err)
+			}
 		})
 		return
 	}
@@ -537,8 +546,15 @@ func (h *FileHandler) Search(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var results []FileInfo
-	filepath.Walk(searchRoot, func(path string, info os.FileInfo, err error) error {
-		if err != nil || len(results) >= 100 {
+	_ = filepath.Walk(searchRoot, func(path string, info os.FileInfo, err error) error {
+		if err != nil || info == nil || len(results) >= 100 {
+			return nil
+		}
+		// Skip symlinks — don't leak files outside the root via search.
+		if info.Mode()&os.ModeSymlink != 0 {
+			if info.IsDir() {
+				return filepath.SkipDir
+			}
 			return nil
 		}
 		if strings.HasPrefix(info.Name(), ".") {
@@ -732,8 +748,15 @@ func (h *FileHandler) Recent(w http.ResponseWriter, r *http.Request) {
 	}
 	var recentFiles []modFile
 
-	filepath.Walk(searchRoot, func(path string, info os.FileInfo, err error) error {
-		if err != nil {
+	_ = filepath.Walk(searchRoot, func(path string, info os.FileInfo, err error) error {
+		if err != nil || info == nil {
+			return nil
+		}
+		// Skip symlinks.
+		if info.Mode()&os.ModeSymlink != 0 {
+			if info.IsDir() {
+				return filepath.SkipDir
+			}
 			return nil
 		}
 		if strings.HasPrefix(info.Name(), ".") {
@@ -819,11 +842,15 @@ func (h *FileHandler) Extract(w http.ResponseWriter, r *http.Request) {
 	}
 	defer reader.Close()
 
+	cleanDest := filepath.Clean(destDir) + string(filepath.Separator)
 	extracted := 0
 	for _, f := range reader.File {
 		fpath := filepath.Join(destDir, f.Name)
-		// Prevent zip slip
-		if !strings.HasPrefix(filepath.Clean(fpath), filepath.Clean(destDir)) {
+		cleaned := filepath.Clean(fpath)
+		// Prevent zip slip — require the cleaned path to live under destDir
+		// (with trailing separator to avoid /data being a prefix of /data-evil).
+		if cleaned != filepath.Clean(destDir) && !strings.HasPrefix(cleaned+string(filepath.Separator), cleanDest) {
+			slog.Warn("zip slip attempt blocked", "entry", f.Name, "dest", destDir)
 			continue
 		}
 		if f.FileInfo().IsDir() {
@@ -911,10 +938,7 @@ func (h *FileHandler) Compress(w http.ResponseWriter, r *http.Request) {
 			continue
 		}
 		if info.IsDir() {
-			filepath.Walk(absSrc, func(fpath string, finfo os.FileInfo, ferr error) error {
-				if ferr != nil || finfo.IsDir() {
-					return nil
-				}
+			walkFilesNoSymlinks(absSrc, func(fpath string, finfo os.FileInfo, _ string) {
 				relPath, _ := filepath.Rel(absDir, fpath)
 				header, _ := zip.FileInfoHeader(finfo)
 				header.Name = filepath.ToSlash(relPath)
@@ -922,11 +946,12 @@ func (h *FileHandler) Compress(w http.ResponseWriter, r *http.Request) {
 				writer, _ := zw.CreateHeader(header)
 				f, err := os.Open(fpath)
 				if err != nil {
-					return nil
+					return
 				}
 				defer f.Close()
-				io.Copy(writer, f)
-				return nil
+				if _, err := io.Copy(writer, f); err != nil {
+					slog.Debug("compress copy failed", "err", err)
+				}
 			})
 		} else {
 			header, _ := zip.FileInfoHeader(info)

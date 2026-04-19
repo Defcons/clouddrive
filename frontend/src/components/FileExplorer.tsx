@@ -28,6 +28,7 @@ import FileInfoPanel from './FileInfoPanel'
 import FileFilter, { getFilterExtensions } from './FileFilter'
 import BatchRename from './BatchRename'
 import SharesManager from './SharesManager'
+import { confirm as confirmModal, prompt as promptModal } from './ConfirmModal'
 
 function formatSize(bytes: number): string {
   if (bytes === 0) return '—'
@@ -267,11 +268,17 @@ export default function FileExplorer({ initialPath, onLogout }: { initialPath: s
 
       if ((e.key === 'Delete' || e.key === 'Backspace') && !isInput && selectedFiles.size > 0) {
         const selected = getSelectedFileObjects()
-        if (confirm(`Move ${selected.length} item(s) to trash?`)) {
+        confirmModal({
+          title: 'Move to trash?',
+          message: `Move ${selected.length} item(s) to trash?`,
+          destructive: true,
+          confirmLabel: 'Move to trash',
+        }).then((ok) => {
+          if (!ok) return
           Promise.all(selected.map((f) => deleteFile(f.path))).then(() => {
             setSelectedFiles(new Set()); refresh(); window.dispatchEvent(new Event('sidebar-refresh'))
           })
-        }
+        })
         return
       }
 
@@ -311,7 +318,12 @@ export default function FileExplorer({ initialPath, onLogout }: { initialPath: s
   }
 
   const handleNewFolder = async () => {
-    const name = prompt('Folder name:')
+    const name = await promptModal({
+      title: 'New folder',
+      message: 'Enter a name for the new folder:',
+      prompt: { placeholder: 'Folder name', initialValue: '' },
+      confirmLabel: 'Create',
+    })
     if (!name) return
     try {
       await createFolder(path, name)
@@ -487,7 +499,12 @@ export default function FileExplorer({ initialPath, onLogout }: { initialPath: s
   const handleCompress = async () => {
     setContextMenu(null)
     const selected = getSelectedFileObjects()
-    const name = prompt('Archive name:', 'archive.zip')
+    const name = await promptModal({
+      title: 'Create archive',
+      message: `Compress ${selected.length} item(s) into a zip file:`,
+      prompt: { placeholder: 'archive.zip', initialValue: 'archive.zip' },
+      confirmLabel: 'Create archive',
+    })
     if (!name) return
     try {
       await compressFiles(selected.map((f) => f.path), name)
@@ -609,7 +626,13 @@ export default function FileExplorer({ initialPath, onLogout }: { initialPath: s
   const handleBulkDelete = async () => {
     setContextMenu(null)
     const selected = getSelectedFileObjects()
-    if (!confirm(`Delete ${selected.length} item${selected.length !== 1 ? 's' : ''}?`)) return
+    const ok = await confirmModal({
+      title: 'Move to trash?',
+      message: `Delete ${selected.length} item${selected.length !== 1 ? 's' : ''}? They can be restored from Trash.`,
+      destructive: true,
+      confirmLabel: 'Move to trash',
+    })
+    if (!ok) return
     for (const file of selected) {
       try {
         await deleteFile(file.path)

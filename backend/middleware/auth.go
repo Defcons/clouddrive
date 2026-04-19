@@ -8,34 +8,52 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 )
 
+// Typed context keys prevent collisions with other packages.
+type ctxKey string
+
+const (
+	ctxKeyUsername   ctxKey = "username"
+	ctxKeyRole       ctxKey = "role"
+	ctxKeyHomeFolder ctxKey = "homeFolder"
+)
+
+// AuthCookieName is the name of the HttpOnly cookie carrying the JWT.
+const AuthCookieName = "clouddrive_session"
+
 type PwVersionChecker interface {
 	GetPwVersion(username string) int
 }
 
 type AuthMiddleware struct {
-	jwtSecret  []byte
-	pwChecker  PwVersionChecker
+	jwtSecret []byte
+	pwChecker PwVersionChecker
 }
 
 func NewAuthMiddleware(jwtSecret string, pwChecker PwVersionChecker) *AuthMiddleware {
 	return &AuthMiddleware{jwtSecret: []byte(jwtSecret), pwChecker: pwChecker}
 }
 
+// extractToken pulls the JWT from (1) the HttpOnly cookie, or (2) an
+// Authorization: Bearer header (for non-browser API clients). Query-string
+// tokens are NOT accepted — they leak into logs, history, and Referer.
+func extractToken(r *http.Request) string {
+	if c, err := r.Cookie(AuthCookieName); err == nil && c.Value != "" {
+		return c.Value
+	}
+	authHeader := r.Header.Get("Authorization")
+	if authHeader == "" {
+		return ""
+	}
+	token := strings.TrimPrefix(authHeader, "Bearer ")
+	if token == authHeader {
+		return "" // header was present but malformed
+	}
+	return token
+}
+
 func (m *AuthMiddleware) Wrap(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		// Check Authorization header first, then fall back to ?token= query param
-		tokenString := ""
-		authHeader := r.Header.Get("Authorization")
-		if authHeader != "" {
-			tokenString = strings.TrimPrefix(authHeader, "Bearer ")
-			if tokenString == authHeader {
-				http.Error(w, "Invalid authorization format", http.StatusUnauthorized)
-				return
-			}
-		} else {
-			tokenString = r.URL.Query().Get("token")
-		}
-
+		tokenString := extractToken(r)
 		if tokenString == "" {
 			http.Error(w, "Authorization required", http.StatusUnauthorized)
 			return
@@ -47,59 +65,69 @@ func (m *AuthMiddleware) Wrap(next http.HandlerFunc) http.HandlerFunc {
 			}
 			return m.jwtSecret, nil
 		})
-
 		if err != nil || !token.Valid {
 			http.Error(w, "Invalid token", http.StatusUnauthorized)
 			return
 		}
 
-		// Extract claims and add to context
-		if claims, ok := token.Claims.(jwt.MapClaims); ok {
-			ctx := r.Context()
-			username := ""
-			if sub, ok := claims["sub"].(string); ok {
-				username = sub
-				ctx = context.WithValue(ctx, "username", sub)
-			}
-			if role, ok := claims["role"].(string); ok {
-				ctx = context.WithValue(ctx, "role", role)
-			}
-			if homeFolder, ok := claims["homeFolder"].(string); ok {
-				ctx = context.WithValue(ctx, "homeFolder", homeFolder)
-			}
-
-			// Check password version — reject tokens issued before a password change
-			if m.pwChecker != nil && username != "" {
-				tokenPwv := 0
-				if pwv, ok := claims["pwv"].(float64); ok {
-					tokenPwv = int(pwv)
-				}
-				currentPwv := m.pwChecker.GetPwVersion(username)
-				if tokenPwv < currentPwv {
-					http.Error(w, "Session expired — please login again", http.StatusUnauthorized)
-					return
-				}
-			}
-
-			r = r.WithContext(ctx)
+		claims, ok := token.Claims.(jwt.MapClaims)
+		if !ok {
+			http.Error(w, "Invalid token", http.StatusUnauthorized)
+			return
 		}
 
-		next(w, r)
+		ctx := r.Context()
+		username := ""
+		if sub, ok := claims["sub"].(string); ok {
+			username = sub
+			ctx = context.WithValue(ctx, ctxKeyUsername, sub)
+		}
+		if role, ok := claims["role"].(string); ok {
+			ctx = context.WithValue(ctx, ctxKeyRole, role)
+		}
+		if homeFolder, ok := claims["homeFolder"].(string); ok {
+			ctx = context.WithValue(ctx, ctxKeyHomeFolder, homeFolder)
+		}
+
+		// Reject tokens issued before a password change.
+		if m.pwChecker != nil && username != "" {
+			tokenPwv := 0
+			if pwv, ok := claims["pwv"].(float64); ok {
+				tokenPwv = int(pwv)
+			}
+			currentPwv := m.pwChecker.GetPwVersion(username)
+			if tokenPwv < currentPwv {
+				http.Error(w, "Session expired — please login again", http.StatusUnauthorized)
+				return
+			}
+		}
+
+		next(w, r.WithContext(ctx))
 	}
 }
 
-// Helper to get username from request context
 func GetUsername(r *http.Request) string {
-	if username, ok := r.Context().Value("username").(string); ok {
-		return username
+	if v, ok := r.Context().Value(ctxKeyUsername).(string); ok {
+		return v
 	}
 	return ""
 }
 
-// Helper to get role from request context
 func GetRole(r *http.Request) string {
-	if role, ok := r.Context().Value("role").(string); ok {
-		return role
+	if v, ok := r.Context().Value(ctxKeyRole).(string); ok {
+		return v
 	}
 	return ""
+}
+
+func GetHomeFolder(r *http.Request) string {
+	if v, ok := r.Context().Value(ctxKeyHomeFolder).(string); ok {
+		return v
+	}
+	return ""
+}
+
+// ExtractToken is exported for the CSRF middleware to key tokens by session.
+func ExtractToken(r *http.Request) string {
+	return extractToken(r)
 }

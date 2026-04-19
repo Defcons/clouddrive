@@ -39,10 +39,7 @@ export default function SharesManager({ onClose }: Props) {
 
   const fetchShares = async () => {
     try {
-      const token = localStorage.getItem('token')
-      const res = await fetch('/api/shares', {
-        headers: { Authorization: `Bearer ${token}` },
-      })
+      const res = await fetch('/api/shares', { credentials: 'same-origin' })
       if (res.ok) {
         const data = await res.json()
         setShares(data || [])
@@ -61,13 +58,12 @@ export default function SharesManager({ onClose }: Props) {
 
   const handleRevoke = async (token: string) => {
     try {
-      const authToken = localStorage.getItem('token')
-      const csrfRes = await fetch('/api/csrf', { headers: { Authorization: `Bearer ${authToken}` } })
+      const csrfRes = await fetch('/api/csrf', { credentials: 'same-origin' })
       const csrfData = await csrfRes.json()
       await fetch('/api/shares/revoke', {
         method: 'POST',
+        credentials: 'same-origin',
         headers: {
-          Authorization: `Bearer ${authToken}`,
           'Content-Type': 'application/json',
           'X-CSRF-Token': csrfData.csrfToken,
         },

@@ -3,6 +3,7 @@ package services
 import (
 	"bufio"
 	"encoding/json"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"sync"
@@ -50,10 +51,13 @@ func (a *AuditLogger) Log(action, username, ip, detail string) {
 
 	data, err := json.Marshal(entry)
 	if err != nil {
+		slog.Warn("audit marshal failed", "err", err)
 		return
 	}
-	a.file.Write(data)
-	a.file.WriteString("\n")
+	if _, err := a.file.Write(append(data, '\n')); err != nil {
+		// Audit is critical — surface failures visibly so ops notices.
+		slog.Error("audit write failed", "err", err, "action", action, "user", username)
+	}
 }
 
 // GetRecent reads the last N audit entries (newest first)
