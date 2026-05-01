@@ -7,4 +7,19 @@ backend/static/*
 *.dll
 *.so
 *.dylib
+
+# Secrets and credentials
 .env
+.env.*
+!.env.example
+*.key
+*.pem
+*.pfx
+*.p12
+secrets/
+credentials.json
+
+# Local databases
+*.sqlite
+*.sqlite3
+*.db
