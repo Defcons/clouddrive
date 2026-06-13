@@ -69,6 +69,9 @@ func main() {
 	username := os.Getenv("CLOUDDRIVE_USER")
 	password := os.Getenv("CLOUDDRIVE_PASS")
 	if username != "" && password != "" {
+		if password == "change-me" || len(password) < 8 {
+			slog.Warn("CLOUDDRIVE_PASS is weak or a placeholder — set a strong, unique admin password")
+		}
 		if err := services.InitFromEnv(usersFile, username, password); err != nil {
 			slog.Warn("failed to migrate env vars to users.json", "err", err)
 		}
@@ -98,7 +101,7 @@ func main() {
 	authMiddleware := middleware.NewAuthMiddleware(jwtSecret, userStore)
 	fileHandler := handlers.NewFileHandler(storageRoot, permStore, auditLog, trashStore, tagStore, tierStore)
 	diskHandler := handlers.NewDiskHandler(storageRoot)
-	shareHandler := handlers.NewShareHandler(storageRoot, auditLog, sharePwLimiter)
+	shareHandler := handlers.NewShareHandler(storageRoot, permStore, auditLog, sharePwLimiter)
 	versionHandler := handlers.NewVersionHandler()
 	permHandler := handlers.NewPermissionsHandler(permStore, auditLog)
 	auditHandler := handlers.NewAuditHandler(auditLog)
@@ -147,7 +150,10 @@ func main() {
 		allowedOrigins[i] = strings.TrimSpace(allowedOrigins[i])
 	}
 	if len(allowedOrigins) == 0 || allowedOrigins[0] == "" {
-		allowedOrigins = []string{"*"}
+		// Default: no cross-origin access. The frontend is same-origin (served by
+		// this server) so it needs no CORS. Set ALLOWED_ORIGINS only if a
+		// different origin must call the API.
+		allowedOrigins = []string{}
 	}
 	c := cors.New(cors.Options{
 		AllowedOrigins:   allowedOrigins,

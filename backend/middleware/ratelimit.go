@@ -1,7 +1,10 @@
 package middleware
 
 import (
+	"net"
 	"net/http"
+	"os"
+	"strings"
 	"sync"
 	"time"
 )
@@ -49,15 +52,73 @@ func (rl *RateLimiter) cleanup() {
 	}
 }
 
+// trustedProxies is the set of CIDRs whose X-Forwarded-For / X-Real-IP headers
+// are trusted, parsed once from TRUSTED_PROXIES (comma-separated IPs or CIDRs,
+// e.g. "10.0.0.0/8,127.0.0.1"). When empty (default), proxy headers are IGNORED
+// and the direct connection IP is used — so a client hitting the origin
+// directly cannot spoof X-Forwarded-For to evade the limiter.
+var trustedProxies = parseTrustedProxies(os.Getenv("TRUSTED_PROXIES"))
+
+func parseTrustedProxies(s string) []*net.IPNet {
+	var nets []*net.IPNet
+	for _, part := range strings.Split(s, ",") {
+		part = strings.TrimSpace(part)
+		if part == "" {
+			continue
+		}
+		if !strings.Contains(part, "/") {
+			if strings.Contains(part, ":") {
+				part += "/128"
+			} else {
+				part += "/32"
+			}
+		}
+		if _, n, err := net.ParseCIDR(part); err == nil {
+			nets = append(nets, n)
+		}
+	}
+	return nets
+}
+
+func remoteIP(r *http.Request) string {
+	host, _, err := net.SplitHostPort(r.RemoteAddr)
+	if err != nil {
+		return r.RemoteAddr
+	}
+	return host
+}
+
+func isTrustedProxy(ip string) bool {
+	parsed := net.ParseIP(ip)
+	if parsed == nil {
+		return false
+	}
+	for _, n := range trustedProxies {
+		if n.Contains(parsed) {
+			return true
+		}
+	}
+	return false
+}
+
+// getIP returns the client IP for rate-limiting. It honours
+// X-Forwarded-For / X-Real-IP ONLY when the direct peer is a configured trusted
+// proxy; otherwise it uses the direct connection address. This prevents a
+// client from spoofing the header to bypass the login limiter.
 func getIP(r *http.Request) string {
-	// Check X-Forwarded-For (behind nginx reverse proxy)
-	if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
-		return xff
+	peer := remoteIP(r)
+	if isTrustedProxy(peer) {
+		if xri := strings.TrimSpace(r.Header.Get("X-Real-IP")); xri != "" {
+			return xri
+		}
+		if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
+			parts := strings.Split(xff, ",") // left-most = original client
+			if c := strings.TrimSpace(parts[0]); c != "" {
+				return c
+			}
+		}
 	}
-	if xri := r.Header.Get("X-Real-IP"); xri != "" {
-		return xri
-	}
-	return r.RemoteAddr
+	return peer
 }
 
 // Check returns true if the request is allowed, false if rate limited

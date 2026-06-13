@@ -6,6 +6,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"path/filepath"
+	"strings"
 )
 
 type PermissionsHandler struct {
@@ -29,6 +31,27 @@ func (h *PermissionsHandler) SetPrivate(w http.ResponseWriter, r *http.Request) 
 	}
 
 	username := middleware.GetUsername(r)
+	role := middleware.GetRole(r)
+
+	// Authz: non-admins may only manage permissions on paths inside their own
+	// home folder, and may never override an entry owned by someone else.
+	if role != "admin" {
+		home := middleware.GetHomeFolder(r)
+		if home == "" || home == "/" {
+			http.Error(w, "Access denied", http.StatusForbidden)
+			return
+		}
+		cp := filepath.ToSlash(filepath.Clean(req.Path))
+		ch := filepath.ToSlash(filepath.Clean(home))
+		if cp != ch && !strings.HasPrefix(cp, ch+"/") {
+			http.Error(w, "Access denied", http.StatusForbidden)
+			return
+		}
+	}
+	if existing := h.permStore.GetPermission(req.Path); existing != nil && existing.Owner != username && role != "admin" {
+		http.Error(w, "Only the owner or admin can change these permissions", http.StatusForbidden)
+		return
+	}
 
 	// If no allowed users specified, default to just the current user
 	if len(req.AllowedUsers) == 0 {

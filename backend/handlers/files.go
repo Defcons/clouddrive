@@ -13,6 +13,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 	"syscall"
 )
@@ -102,6 +103,17 @@ func (h *FileHandler) safePath(reqPath string) (string, error) {
 	return abs, nil
 }
 
+// maxUploadBytes returns the hard request-body cap for uploads (default 5 GiB),
+// overridable via MAX_UPLOAD_BYTES (in bytes).
+func maxUploadBytes() int64 {
+	if v := os.Getenv("MAX_UPLOAD_BYTES"); v != "" {
+		if n, err := strconv.ParseInt(v, 10, 64); err == nil && n > 0 {
+			return n
+		}
+	}
+	return 5 << 30
+}
+
 // checkAccess verifies the user can access the given path.
 // Non-admin users are restricted to their home folder.
 func (h *FileHandler) checkAccess(r *http.Request, filePath string) bool {
@@ -110,10 +122,7 @@ func (h *FileHandler) checkAccess(r *http.Request, filePath string) bool {
 
 	// Enforce home folder restriction for non-admin users
 	if role != "admin" {
-		homeFolder := ""
-		if hf, ok := r.Context().Value("homeFolder").(string); ok {
-			homeFolder = hf
-		}
+		homeFolder := middleware.GetHomeFolder(r)
 		if homeFolder != "" && homeFolder != "/" {
 			cleanPath := filepath.ToSlash(filepath.Clean(filePath))
 			cleanHome := filepath.ToSlash(filepath.Clean(homeFolder))
@@ -358,8 +367,13 @@ func (h *FileHandler) Upload(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// 500MB max
-	r.ParseMultipartForm(500 << 20)
+	// Hard-cap the whole request body (not just the in-memory threshold) so an
+	// authenticated user can't fill the disk. Tunable via MAX_UPLOAD_BYTES.
+	r.Body = http.MaxBytesReader(w, r.Body, maxUploadBytes())
+	if err := r.ParseMultipartForm(64 << 20); err != nil {
+		http.Error(w, "Upload too large or malformed", http.StatusRequestEntityTooLarge)
+		return
+	}
 
 	files := r.MultipartForm.File["files"]
 	if len(files) == 0 {
@@ -374,7 +388,12 @@ func (h *FileHandler) Upload(w http.ResponseWriter, r *http.Request) {
 			continue
 		}
 
-		dstPath := filepath.Join(absDir, filepath.Base(fh.Filename))
+		name := filepath.Base(fh.Filename)
+		if name == "" || name == "." || name == ".." || strings.HasPrefix(name, ".") {
+			src.Close()
+			continue // refuse dotfiles — would clobber app state (.permissions.json, etc.)
+		}
+		dstPath := filepath.Join(absDir, name)
 		dst, err := os.Create(dstPath)
 		if err != nil {
 			src.Close()
@@ -535,9 +554,9 @@ func (h *FileHandler) Search(w http.ResponseWriter, r *http.Request) {
 
 	username := middleware.GetUsername(r)
 	role := middleware.GetRole(r)
-	homeFolder := "/"
-	if hf, ok := r.Context().Value("homeFolder").(string); ok && hf != "" {
-		homeFolder = hf
+	homeFolder := middleware.GetHomeFolder(r)
+	if homeFolder == "" {
+		homeFolder = "/"
 	}
 
 	searchRoot := filepath.Join(h.root, homeFolder)
@@ -732,9 +751,9 @@ func copyDir(src, dst string) error {
 func (h *FileHandler) Recent(w http.ResponseWriter, r *http.Request) {
 	username := middleware.GetUsername(r)
 	role := middleware.GetRole(r)
-	homeFolder := "/"
-	if hf, ok := r.Context().Value("homeFolder").(string); ok && hf != "" {
-		homeFolder = hf
+	homeFolder := middleware.GetHomeFolder(r)
+	if homeFolder == "" {
+		homeFolder = "/"
 	}
 
 	searchRoot := filepath.Join(h.root, homeFolder)
