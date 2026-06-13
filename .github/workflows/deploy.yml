@@ -27,8 +27,8 @@ jobs:
       - name: Deploy via SSH over Tailscale
         uses: appleboy/ssh-action@v1
         with:
-          host: REDACTED-HOST
-          port: 2223
+          host: ${{ secrets.DEPLOY_HOST }}
+          port: ${{ secrets.DEPLOY_PORT }}
           username: ${{ secrets.DEPLOY_USER }}
           key: ${{ secrets.DEPLOY_SSH_KEY }}
           script: |

@@ -45,11 +45,13 @@ type ShareHandler struct {
 	mu        sync.RWMutex
 	audit     *services.AuditLogger
 	pwLimiter ShareRateLimiter
+	permStore *services.PermissionStore
 }
 
-func NewShareHandler(root string, audit *services.AuditLogger, pwLimiter ShareRateLimiter) *ShareHandler {
+func NewShareHandler(root string, permStore *services.PermissionStore, audit *services.AuditLogger, pwLimiter ShareRateLimiter) *ShareHandler {
 	h := &ShareHandler{
 		root:      root,
+		permStore: permStore,
 		audit:     audit,
 		pwLimiter: pwLimiter,
 		storePath: filepath.Join(root, ".shares.json"),
@@ -130,6 +132,27 @@ func (h *ShareHandler) safePath(reqPath string) (string, error) {
 	return abs, nil
 }
 
+// canAccess mirrors the file handler's gate: non-admins are confined to their
+// home folder, and explicit permission entries are honoured.
+func (h *ShareHandler) canAccess(r *http.Request, p string) bool {
+	username := middleware.GetUsername(r)
+	role := middleware.GetRole(r)
+	if role != "admin" {
+		home := middleware.GetHomeFolder(r)
+		if home != "" && home != "/" {
+			cp := filepath.ToSlash(filepath.Clean(p))
+			ch := filepath.ToSlash(filepath.Clean(home))
+			if cp != ch && !strings.HasPrefix(cp, ch+"/") {
+				return false
+			}
+		}
+	}
+	if h.permStore == nil {
+		return true
+	}
+	return h.permStore.CanAccess(p, username, role)
+}
+
 func generateToken() (string, error) {
 	b := make([]byte, 16)
 	if _, err := rand.Read(b); err != nil {
@@ -157,6 +180,12 @@ func (h *ShareHandler) Create(w http.ResponseWriter, r *http.Request) {
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, "Invalid request", http.StatusBadRequest)
+		return
+	}
+
+	// Authz: you may only share files you're allowed to access.
+	if !h.canAccess(r, req.Path) {
+		http.Error(w, "Access denied", http.StatusForbidden)
 		return
 	}
 
@@ -235,15 +264,23 @@ func (h *ShareHandler) Create(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *ShareHandler) List(w http.ResponseWriter, r *http.Request) {
+	username := middleware.GetUsername(r)
+	role := middleware.GetRole(r)
+
 	h.mu.RLock()
 	defer h.mu.RUnlock()
 
 	now := time.Now().UnixMilli()
 	active := make([]*ShareEntry, 0)
 	for _, entry := range h.shares {
-		if entry.ExpiresAt > now {
-			active = append(active, entry)
+		if entry.ExpiresAt <= now {
+			continue
 		}
+		// A user only sees their own shares; admins see all.
+		if role != "admin" && entry.CreatedBy != username {
+			continue
+		}
+		active = append(active, entry)
 	}
 
 	w.Header().Set("Content-Type", "application/json")
@@ -259,10 +296,23 @@ func (h *ShareHandler) Revoke(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	username := middleware.GetUsername(r)
+	role := middleware.GetRole(r)
+
 	h.mu.Lock()
-	delete(h.shares, req.Token)
-	h.save()
+	entry, exists := h.shares[req.Token]
+	owned := exists && (role == "admin" || entry.CreatedBy == username)
+	if owned {
+		delete(h.shares, req.Token)
+		h.save()
+	}
 	h.mu.Unlock()
+
+	// Don't reveal whether a token exists you don't own.
+	if !owned {
+		http.Error(w, "Not found", http.StatusNotFound)
+		return
+	}
 
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(map[string]string{"revoked": req.Token})
@@ -392,7 +442,7 @@ func (h *ShareHandler) Download(w http.ResponseWriter, r *http.Request) {
 }
 
 func shareAuthCookieName(token string) string {
-	return "share_auth_" + token[:8]
+	return "share_auth_" + token
 }
 
 func (h *ShareHandler) servePasswordPage(w http.ResponseWriter, token string, fileName string, wrongPassword bool) {
@@ -550,8 +600,9 @@ func (h *ShareHandler) Upload(w http.ResponseWriter, r *http.Request) {
 		targetDir = candidate
 	}
 
-	if err := r.ParseMultipartForm(500 << 20); err != nil {
-		http.Error(w, "Failed to parse upload", http.StatusBadRequest)
+	r.Body = http.MaxBytesReader(w, r.Body, maxUploadBytes())
+	if err := r.ParseMultipartForm(64 << 20); err != nil {
+		http.Error(w, "Upload too large or malformed", http.StatusRequestEntityTooLarge)
 		return
 	}
 	files := r.MultipartForm.File["files"]
@@ -566,7 +617,12 @@ func (h *ShareHandler) Upload(w http.ResponseWriter, r *http.Request) {
 		if err != nil {
 			continue
 		}
-		dstPath := filepath.Join(targetDir, filepath.Base(fh.Filename))
+		name := filepath.Base(fh.Filename)
+		if name == "" || name == "." || name == ".." || strings.HasPrefix(name, ".") {
+			src.Close()
+			continue
+		}
+		dstPath := filepath.Join(targetDir, name)
 		dst, err := os.Create(dstPath)
 		if err != nil {
 			src.Close()
