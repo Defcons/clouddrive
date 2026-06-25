@@ -25,12 +25,15 @@ function formatSize(bytes: number): string {
 export default function RecentFiles({ onNavigate, onClose }: Props) {
   const [files, setFiles] = useState<FileItem[]>([])
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState(false)
 
   useEffect(() => {
+    let mounted = true
     getRecentFiles()
-      .then(setFiles)
-      .catch(() => {})
-      .finally(() => setLoading(false))
+      .then((f) => { if (mounted) setFiles(f) })
+      .catch(() => { if (mounted) setError(true) })
+      .finally(() => { if (mounted) setLoading(false) })
+    return () => { mounted = false }
   }, [])
 
   useEffect(() => {
@@ -40,7 +43,7 @@ export default function RecentFiles({ onNavigate, onClose }: Props) {
   }, [onClose])
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={onClose}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onMouseDown={(e) => { if (e.target === e.currentTarget) onClose() }}>
       <div className="bg-white dark:bg-gray-800 rounded-xl shadow-2xl w-full max-w-2xl mx-4 max-h-[80vh] flex flex-col overflow-hidden" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between px-5 py-4 border-b border-gray-200 dark:border-gray-700 flex-shrink-0">
           <h2 className="text-base font-semibold text-gray-800 dark:text-gray-200">Recent Files</h2>
@@ -53,6 +56,8 @@ export default function RecentFiles({ onNavigate, onClose }: Props) {
         <div className="flex-1 overflow-y-auto">
           {loading ? (
             <div className="text-gray-400 text-center py-12">Loading...</div>
+          ) : error ? (
+            <div className="text-gray-400 text-center py-12">Couldn’t load recent files. Try again.</div>
           ) : files.length === 0 ? (
             <div className="text-gray-400 text-center py-12">No recent files</div>
           ) : (
