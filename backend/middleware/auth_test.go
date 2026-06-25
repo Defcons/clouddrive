@@ -145,3 +145,32 @@ func withKind(c jwt.MapClaims, kind string) jwt.MapClaims {
 	c["kind"] = kind
 	return c
 }
+
+type fakeSessions struct{ valid map[string]bool }
+
+func (f fakeSessions) IsValid(id string) bool        { return f.valid[id] }
+func (f fakeSessions) Touch(id, ip string, ms int64) {}
+
+func TestWrapEnforcesSessionValidator(t *testing.T) {
+	m := NewAuthMiddleware(testSecret, fakePwChecker{version: 0})
+	m.SetSessionValidator(fakeSessions{valid: map[string]bool{"good": true}})
+
+	withJTI := func(jti string) jwt.MapClaims {
+		c := withKind(baseClaims(), "session")
+		c["jti"] = jti
+		return c
+	}
+
+	// Valid, active session → allowed.
+	if called, status := runWrap(t, m, mintHS256(t, testSecret, withJTI("good"))); !called || status != http.StatusOK {
+		t.Errorf("active session: called=%v status=%d, want true/200", called, status)
+	}
+	// Revoked/unknown session id → 401.
+	if called, status := runWrap(t, m, mintHS256(t, testSecret, withJTI("revoked"))); called || status != http.StatusUnauthorized {
+		t.Errorf("revoked session: called=%v status=%d, want false/401", called, status)
+	}
+	// Missing jti with a validator set → 401.
+	if called, status := runWrap(t, m, mintHS256(t, testSecret, withKind(baseClaims(), "session"))); called || status != http.StatusUnauthorized {
+		t.Errorf("missing jti: called=%v status=%d, want false/401", called, status)
+	}
+}

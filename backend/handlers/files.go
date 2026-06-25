@@ -19,11 +19,40 @@ import (
 
 type FileHandler struct {
 	root       string
+	thumbDir   string
+	uploadDir  string
 	permStore  *services.PermissionStore
 	audit      *services.AuditLogger
 	trash      *services.TrashStore
 	tags       *services.TagStore
 	tierStore  *services.BackupTierStore
+	// quotaOf returns a user's storage quota in bytes (0 = unlimited). Optional.
+	quotaOf func(username string) int64
+	// versions, if set, snapshots files before they're overwritten on upload.
+	versions *services.VersionStore
+}
+
+// SetVersionStore enables keeping previous copies of files on overwrite.
+func (h *FileHandler) SetVersionStore(v *services.VersionStore) {
+	h.versions = v
+}
+
+// SetQuotaLookup wires a per-user quota source (e.g. the user store). When set,
+// uploads are rejected if they would push the user's home folder over quota.
+func (h *FileHandler) SetQuotaLookup(fn func(username string) int64) {
+	h.quotaOf = fn
+}
+
+// dirSize returns the total bytes of regular files under path.
+func dirSize(path string) int64 {
+	var total int64
+	_ = filepath.Walk(path, func(_ string, info os.FileInfo, err error) error {
+		if err == nil && info != nil && !info.IsDir() {
+			total += info.Size()
+		}
+		return nil
+	})
+	return total
 }
 
 type FileInfo struct {
@@ -37,6 +66,41 @@ type FileInfo struct {
 	IsPrivate  bool     `json:"isPrivate,omitempty"`
 	Tags       []string `json:"tags,omitempty"`
 	BackupTier int      `json:"backupTier,omitempty"`
+	Snippet    string   `json:"snippet,omitempty"` // content-search match context
+}
+
+// contentSearchExts are the text file types whose contents we scan.
+var contentSearchExts = map[string]bool{
+	".txt": true, ".md": true, ".json": true, ".yml": true, ".yaml": true,
+	".xml": true, ".csv": true, ".log": true, ".js": true, ".ts": true,
+	".jsx": true, ".tsx": true, ".css": true, ".html": true, ".go": true,
+	".py": true, ".sh": true, ".bat": true, ".ini": true, ".conf": true,
+	".toml": true, ".env": true, ".sql": true, ".rs": true, ".java": true,
+}
+
+const maxContentScanBytes = 512 * 1024
+
+// contentSnippet returns a one-line excerpt around idx (a byte offset into s).
+func contentSnippet(s string, idx, qlen int) string {
+	if idx < 0 || idx > len(s) {
+		return ""
+	}
+	start := idx - 30
+	if start < 0 {
+		start = 0
+	}
+	end := idx + qlen + 40
+	if end > len(s) {
+		end = len(s)
+	}
+	sn := strings.TrimSpace(strings.NewReplacer("\n", " ", "\r", " ", "\t", " ").Replace(s[start:end]))
+	if start > 0 {
+		sn = "…" + sn
+	}
+	if end < len(s) {
+		sn = sn + "…"
+	}
+	return sn
 }
 
 // getCreationTime tries to get the file creation/change time, falls back to ModTime.
@@ -49,7 +113,16 @@ func getCreationTime(info os.FileInfo) int64 {
 }
 
 func NewFileHandler(root string, permStore *services.PermissionStore, audit *services.AuditLogger, trash *services.TrashStore, tags *services.TagStore, tierStore *services.BackupTierStore) *FileHandler {
-	return &FileHandler{root: root, permStore: permStore, audit: audit, trash: trash, tags: tags, tierStore: tierStore}
+	return &FileHandler{
+		root:      root,
+		thumbDir:  filepath.Join(root, ".thumbs"),
+		uploadDir: filepath.Join(root, ".uploads"),
+		permStore: permStore,
+		audit:     audit,
+		trash:     trash,
+		tags:      tags,
+		tierStore: tierStore,
+	}
 }
 
 // getClientIP extracts the client IP, preferring the left-most
@@ -321,7 +394,6 @@ func (h *FileHandler) Download(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", mimeType)
 	w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="%s"`, info.Name()))
-	w.Header().Set("Content-Length", fmt.Sprintf("%d", info.Size()))
 
 	f, err := os.Open(absPath)
 	if err != nil {
@@ -329,7 +401,9 @@ func (h *FileHandler) Download(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer f.Close()
-	io.Copy(w, f)
+	// ServeContent handles Range requests (resumable / partial downloads),
+	// conditional requests, and Content-Length.
+	http.ServeContent(w, r, info.Name(), info.ModTime(), f)
 }
 
 func (h *FileHandler) Preview(w http.ResponseWriter, r *http.Request) {
@@ -364,7 +438,6 @@ func (h *FileHandler) Preview(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", mimeType)
 	w.Header().Set("Content-Disposition", fmt.Sprintf(`inline; filename="%s"`, info.Name()))
-	w.Header().Set("Content-Length", fmt.Sprintf("%d", info.Size()))
 	w.Header().Set("Cache-Control", "private, max-age=3600")
 
 	f, err := os.Open(absPath)
@@ -373,7 +446,8 @@ func (h *FileHandler) Preview(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer f.Close()
-	io.Copy(w, f)
+	// ServeContent adds Range support so audio/video previews can seek.
+	http.ServeContent(w, r, info.Name(), info.ModTime(), f)
 }
 
 func (h *FileHandler) Upload(w http.ResponseWriter, r *http.Request) {
@@ -407,6 +481,27 @@ func (h *FileHandler) Upload(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Enforce the user's storage quota (if configured). Only quota'd users pay
+	// the cost of measuring their home folder.
+	if h.quotaOf != nil {
+		if quota := h.quotaOf(middleware.GetUsername(r)); quota > 0 {
+			var incoming int64
+			for _, fh := range files {
+				incoming += fh.Size
+			}
+			home := middleware.GetHomeFolder(r)
+			if home == "" {
+				home = "/"
+			}
+			if homeAbs, err := h.safePath(home); err == nil {
+				if dirSize(homeAbs)+incoming > quota {
+					http.Error(w, "Storage quota exceeded", http.StatusInsufficientStorage)
+					return
+				}
+			}
+		}
+	}
+
 	uploaded := make([]string, 0, len(files))
 	for _, fh := range files {
 		src, err := fh.Open()
@@ -420,6 +515,15 @@ func (h *FileHandler) Upload(w http.ResponseWriter, r *http.Request) {
 			continue // refuse dotfiles — would clobber app state (.permissions.json, etc.)
 		}
 		dstPath := filepath.Join(absDir, name)
+		// If we're about to overwrite an existing file, snapshot it first.
+		if h.versions != nil {
+			if _, statErr := os.Stat(dstPath); statErr == nil {
+				webPath := filepath.ToSlash(filepath.Join(targetDir, name))
+				if verr := h.versions.SaveVersion(dstPath, webPath); verr != nil {
+					slog.Warn("failed to snapshot version before overwrite", "path", webPath, "err", verr)
+				}
+			}
+		}
 		dst, err := os.Create(dstPath)
 		if err != nil {
 			src.Close()
@@ -633,6 +737,65 @@ func (h *FileHandler) Search(w http.ResponseWriter, r *http.Request) {
 		}
 		return nil
 	})
+
+	// Optional content search: scan text files for the query and append
+	// matches (with a snippet) that aren't already in the filename results.
+	if r.URL.Query().Get("content") == "1" {
+		seen := make(map[string]bool, len(results))
+		for _, fi := range results {
+			seen[fi.Path] = true
+		}
+		_ = filepath.Walk(searchRoot, func(path string, info os.FileInfo, err error) error {
+			if err != nil || info == nil || len(results) >= 100 {
+				return nil
+			}
+			if info.Mode()&os.ModeSymlink != 0 {
+				if info.IsDir() {
+					return filepath.SkipDir
+				}
+				return nil
+			}
+			if strings.HasPrefix(info.Name(), ".") {
+				if info.IsDir() {
+					return filepath.SkipDir
+				}
+				return nil
+			}
+			if info.IsDir() || info.Size() == 0 || info.Size() > maxContentScanBytes {
+				return nil
+			}
+			if !contentSearchExts[strings.ToLower(filepath.Ext(info.Name()))] {
+				return nil
+			}
+			relPath, _ := filepath.Rel(h.root, path)
+			entryPath := "/" + filepath.ToSlash(relPath)
+			if seen[entryPath] {
+				return nil
+			}
+			if h.permStore != nil && !h.permStore.CanAccess(entryPath, username, role) {
+				return nil
+			}
+			data, rerr := os.ReadFile(path)
+			if rerr != nil {
+				return nil
+			}
+			idx := strings.Index(strings.ToLower(string(data)), query)
+			if idx < 0 {
+				return nil
+			}
+			results = append(results, FileInfo{
+				Name:      info.Name(),
+				Path:      entryPath,
+				IsDir:     false,
+				Size:      info.Size(),
+				CreatedAt: getCreationTime(info),
+				ModTime:   info.ModTime().UnixMilli(),
+				Snippet:   contentSnippet(string(data), idx, len(query)),
+			})
+			seen[entryPath] = true
+			return nil
+		})
+	}
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(results)
