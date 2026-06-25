@@ -72,10 +72,14 @@ Working branch: `loop/hardening`. **Never push `master`** — that auto-deploys 
 - **Bug (perf/visual):** text preview rendered the entire file into a `<pre>` → multi-MB logs froze the tab. Now truncates display at 200 KB with a download hint.
 - Verified: `npm run build` clean.
 
+### Iter 10 — Bulk-op feedback + list thumbnail fallback
+- **Bug (MED):** bulk download/delete called `setError` inside the loop, so only the last failure showed and there was no success feedback. Now aggregate failures and show one summary toast (consistent with the rest of the app), plus a success toast on full success.
+- **Bug (LOW, visual):** list-view image thumbnails had no `onError`, so a thumbnail that 403s/fails to decode showed a broken-image glyph. Now falls back to the file-type icon (mirrors the grid view).
+- Verified: `npm run build` clean.
+
 ## Open / found (remaining — lower priority)
 **Frontend** (verified, deferred)
-- MED: bulk delete/download overwrite each other's error banners; no per-item failure summary; bulk download fires N anchor clicks (popup-flood risk).
-- LOW: list-view `<img>` missing onError fallback (grid has one); downloadFile revokes object URL synchronously; Ctrl+A selects `files` not `filteredFiles` (left as-is to avoid effect stale-closure risk).
+- LOW: `downloadFile` revokes the object URL synchronously after click (works today; fragile for huge blobs); Ctrl+A selects `files` not `filteredFiles` (left as-is to avoid effect stale-closure risk).
 **Backend / perf**
 - `handlers/files.go` `List` does an extra `os.ReadDir` per directory entry (itemCount) — N+1 syscalls on large dirs.
 **Repo**
