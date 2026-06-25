@@ -143,6 +143,27 @@ func (h *FileHandler) checkAccess(r *http.Request, filePath string) bool {
 	return userCanAccess(r, h.permStore, filePath)
 }
 
+// migrateMetadata moves per-path metadata (permissions, tags, backup tier) when
+// a file/folder is renamed or moved, so its privacy/tags/tier follow it instead
+// of being orphaned (a moved private folder would otherwise become public).
+func (h *FileHandler) migrateMetadata(oldPath, newPath string) {
+	if h.permStore != nil {
+		if err := h.permStore.MovePath(oldPath, newPath); err != nil {
+			slog.Warn("failed to migrate permissions", "err", err)
+		}
+	}
+	if h.tags != nil {
+		if err := h.tags.MovePath(oldPath, newPath); err != nil {
+			slog.Warn("failed to migrate tags", "err", err)
+		}
+	}
+	if h.tierStore != nil {
+		if err := h.tierStore.MovePath(oldPath, newPath); err != nil {
+			slog.Warn("failed to migrate backup tier", "err", err)
+		}
+	}
+}
+
 func (h *FileHandler) List(w http.ResponseWriter, r *http.Request) {
 	dirPath := r.URL.Query().Get("path")
 	if dirPath == "" {
@@ -495,6 +516,10 @@ func (h *FileHandler) Rename(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Keep privacy/tags/backup-tier attached to the renamed item.
+	newWebPath := filepath.ToSlash(filepath.Join(filepath.Dir(req.OldPath), filepath.Base(req.NewName)))
+	h.migrateMetadata(req.OldPath, newWebPath)
+
 	if h.audit != nil {
 		h.audit.Log("RENAME", middleware.GetUsername(r), getClientIP(r), fmt.Sprintf("renamed %s to %s", req.OldPath, req.NewName))
 	}
@@ -646,6 +671,9 @@ func (h *FileHandler) Move(w http.ResponseWriter, r *http.Request) {
 		newPath := filepath.Join(absDest, filepath.Base(absSrc))
 		if err := os.Rename(absSrc, newPath); err == nil {
 			moved++
+			// Keep privacy/tags/backup-tier attached to the moved item.
+			newWebPath := filepath.ToSlash(filepath.Join(req.Destination, filepath.Base(p)))
+			h.migrateMetadata(p, newWebPath)
 		}
 	}
 

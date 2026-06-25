@@ -83,6 +83,17 @@ func (s *BackupTierStore) SetTier(path string, tier int) error {
 	return s.save()
 }
 
+// MovePath migrates the backup tier for path (and any descendants) to newPath
+// so a renamed/moved folder keeps its tier.
+func (s *BackupTierStore) MovePath(oldPath, newPath string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if movePathKeys(s.tiers, oldPath, newPath) {
+		return s.save()
+	}
+	return nil
+}
+
 // All returns a copy of the tiers map
 func (s *BackupTierStore) All() map[string]int {
 	s.mu.RLock()

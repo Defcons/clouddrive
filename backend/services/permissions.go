@@ -127,6 +127,18 @@ func (s *PermissionStore) SetPrivate(folderPath, owner string, allowedUsers []st
 	return s.save()
 }
 
+// MovePath migrates the permission entry for folderPath (and any descendants)
+// to newPath, so a renamed/moved private folder keeps its restriction instead
+// of silently becoming public.
+func (s *PermissionStore) MovePath(oldPath, newPath string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if movePathKeys(s.permissions, oldPath, newPath) {
+		return s.save()
+	}
+	return nil
+}
+
 // RemovePrivate removes the permission restriction on a folder
 func (s *PermissionStore) RemovePrivate(folderPath string) error {
 	s.mu.Lock()
