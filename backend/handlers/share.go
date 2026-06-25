@@ -640,8 +640,13 @@ func (h *ShareHandler) Upload(w http.ResponseWriter, r *http.Request) {
 		h.audit.Log("SHARE_UPLOAD", "anonymous", r.RemoteAddr, fmt.Sprintf("uploaded %d file(s) via share %s", uploaded, token))
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	_ = json.NewEncoder(w).Encode(map[string]int{"uploaded": uploaded})
+	// Post/Redirect/Get: the upload form is a full-page submit (no JS), so send
+	// the user back to the browse page to see the refreshed listing.
+	browseURL := "/share/" + token
+	if subPath != "" {
+		browseURL += "/" + subPath
+	}
+	http.Redirect(w, r, browseURL, http.StatusSeeOther)
 }
 
 func (h *ShareHandler) serveBrowsePage(w http.ResponseWriter, token string, entry *ShareEntry, absPath string, subPath string) {
@@ -739,25 +744,16 @@ func (h *ShareHandler) serveBrowsePage(w http.ResponseWriter, token string, entr
 		if subPath != "" {
 			pathParam = "?path=" + subPath
 		}
+		// No inline JS — the page's CSP is script-src 'self', so a plain
+		// multipart form (not a fetch/drag-drop handler) is the only thing that
+		// actually works. The Upload handler redirects back here on success.
 		uploadSection = fmt.Sprintf(`
-<div class="upload-zone" id="upload-zone">
+<div class="upload-zone">
   <form method="POST" action="%s%s" enctype="multipart/form-data" class="upload-form">
-    <input type="file" name="files" multiple id="file-input" style="display:none" onchange="this.form.submit()">
-    <button type="button" onclick="document.getElementById('file-input').click()" class="dl-btn" style="background:#16a34a">Upload Files</button>
-    <span class="upload-hint">or drag files here</span>
+    <input type="file" name="files" multiple class="upload-input">
+    <button type="submit" class="dl-btn" style="background:#16a34a">Upload</button>
   </form>
-</div>
-<script>
-const zone=document.getElementById('upload-zone');
-zone.addEventListener('dragover',e=>{e.preventDefault();zone.style.background='#eff6ff'});
-zone.addEventListener('dragleave',()=>{zone.style.background=''});
-zone.addEventListener('drop',e=>{
-  e.preventDefault();zone.style.background='';
-  const fd=new FormData();
-  for(const f of e.dataTransfer.files)fd.append('files',f);
-  fetch(%q,{method:'POST',body:fd,credentials:'include'}).then(()=>location.reload());
-});
-</script>`, html.EscapeString(uploadAction), html.EscapeString(pathParam), uploadAction+pathParam)
+</div>`, html.EscapeString(uploadAction), html.EscapeString(pathParam))
 	}
 
 	pageHTML := fmt.Sprintf(`<!DOCTYPE html>

@@ -28,6 +28,8 @@ func NewAuditLogger(storageRoot string) *AuditLogger {
 	logPath := filepath.Join(storageRoot, ".audit.log")
 	f, err := os.OpenFile(logPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0600)
 	if err != nil {
+		// Audit is security-relevant — never disable it silently.
+		slog.Error("AUDIT LOGGING DISABLED: cannot open audit file; security events will NOT be recorded", "path", logPath, "err", err)
 		return &AuditLogger{filePath: logPath}
 	}
 	return &AuditLogger{filePath: logPath, file: f}

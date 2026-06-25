@@ -20,13 +20,19 @@ export default function SearchResults({ query, onNavigate, onClose }: Props) {
       return
     }
     setLoading(true)
+    // Guard against a slow earlier query resolving after a newer one (and
+    // against setState after unmount).
+    let cancelled = false
     const timer = setTimeout(() => {
       searchFiles(query)
-        .then(setResults)
-        .catch(() => setResults([]))
-        .finally(() => setLoading(false))
+        .then((r) => { if (!cancelled) setResults(r) })
+        .catch(() => { if (!cancelled) setResults([]) })
+        .finally(() => { if (!cancelled) setLoading(false) })
     }, 300)
-    return () => clearTimeout(timer)
+    return () => {
+      cancelled = true
+      clearTimeout(timer)
+    }
   }, [query])
 
   useEffect(() => {
