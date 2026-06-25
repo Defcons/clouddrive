@@ -89,9 +89,13 @@ Working branch: `loop/hardening`. **Never push `master`** — that auto-deploys 
 - **Tests:** `handlers/authz_test.go` — integration-style through the real auth middleware: GetPermission no-leak cross-home, backup-tier Set denied cross-home, List admin-only.
 - Audited SOUND (no change): `walkFilesNoSymlinks` (Lstat-based symlink skip), `tags.go` HTTP handlers (already gated), all three JSON stores' intra-store concurrency (mutex + tmp+rename).
 
+### Iter 13 — Corrupt-JSON data loss across all stores
+- **Bug (data integrity):** all five JSON stores (permissions/tags/backuptiers/notifications/trash) ignored `json.Unmarshal` errors in `load()` → a corrupt/truncated file silently loaded as empty and the next `save()` overwrote it, permanently discarding recoverable data. Added a shared `loadJSONFile` helper that logs the error and preserves the bad file as `<path>.corrupt` before starting empty; routed all five `load()` methods through it.
+- **Tests:** `services/jsonstore_test.go` — valid load, missing-file no-op, corrupt→preserved-as-.corrupt, and a TagStore integration proving the store survives + stays usable.
+
 ## Open / found (remaining — lower priority)
 **Backend** (verified, deferred)
-- LOW: the three JSON stores (`permissions`/`tags`/`backuptiers`) ignore `json.Unmarshal` errors in `load()` → a corrupt file silently loads empty and the next save discards all entries. Also stale keys never pruned on Delete/Rename/Move (a recreated path inherits old ACL/tier).
+- LOW: stale keys in permissions/tags/backuptiers stores never pruned on Delete/Rename/Move (a recreated path inherits old ACL/tier).
 - LOW (hardening): `middleware/security.go` CSP allows `style-src 'unsafe-inline'`.
 **Frontend** (verified, deferred)
 - MED: ShareModal/SettingsModal/BatchRename hand-roll overlays instead of reusing the accessible `Modal.tsx` (no focus trap/restore/aria; backdrop closes on click-drag-release → data loss). Adopting `Modal.tsx` fixes all at once.

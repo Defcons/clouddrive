@@ -33,11 +33,7 @@ func NewNotificationStore(storageRoot string) *NotificationStore {
 }
 
 func (s *NotificationStore) load() {
-	data, err := os.ReadFile(s.filePath)
-	if err != nil {
-		return
-	}
-	json.Unmarshal(data, &s.notifications)
+	loadJSONFile(s.filePath, &s.notifications)
 }
 
 func (s *NotificationStore) save() error {
