@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { listTrash, restoreFromTrash, deleteFromTrash, emptyTrash } from '../api'
 import type { TrashItem } from '../types'
 import { confirm as confirmModal } from './ConfirmModal'
+import { useDialog } from '../hooks/useDialog'
 
 interface Props {
   onClose: () => void
@@ -38,11 +39,7 @@ export default function TrashView({ onClose, onNavigate }: Props) {
 
   useEffect(() => { refresh() }, [])
 
-  useEffect(() => {
-    const handler = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
-    document.addEventListener('keydown', handler)
-    return () => document.removeEventListener('keydown', handler)
-  }, [onClose])
+  const dialogRef = useDialog<HTMLDivElement>(onClose)
 
   const handleRestore = async (id: string) => {
     setError('')
@@ -90,7 +87,7 @@ export default function TrashView({ onClose, onNavigate }: Props) {
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onMouseDown={(e) => { if (e.target === e.currentTarget) onClose() }}>
-      <div className="bg-white dark:bg-gray-800 rounded-xl shadow-2xl w-full max-w-3xl mx-0 md:mx-4 max-h-full md:max-h-[80vh] h-full md:h-auto flex flex-col overflow-hidden" onClick={(e) => e.stopPropagation()}>
+      <div ref={dialogRef} role="dialog" aria-modal="true" tabIndex={-1} className="bg-white dark:bg-gray-800 rounded-xl shadow-2xl w-full max-w-3xl mx-0 md:mx-4 max-h-full md:max-h-[80vh] h-full md:h-auto flex flex-col overflow-hidden focus:outline-none" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between px-5 py-4 border-b border-gray-200 dark:border-gray-700 flex-shrink-0">
           <div className="flex items-center gap-2">
             <svg className="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">

@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { getRecentFiles } from '../api'
 import type { FileItem } from '../types'
 import FileIcon from './FileIcon'
+import { useDialog } from '../hooks/useDialog'
 
 interface Props {
   onNavigate: (path: string) => void
@@ -36,15 +37,11 @@ export default function RecentFiles({ onNavigate, onClose }: Props) {
     return () => { mounted = false }
   }, [])
 
-  useEffect(() => {
-    const handler = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
-    document.addEventListener('keydown', handler)
-    return () => document.removeEventListener('keydown', handler)
-  }, [onClose])
+  const dialogRef = useDialog<HTMLDivElement>(onClose)
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onMouseDown={(e) => { if (e.target === e.currentTarget) onClose() }}>
-      <div className="bg-white dark:bg-gray-800 rounded-xl shadow-2xl w-full max-w-2xl mx-4 max-h-[80vh] flex flex-col overflow-hidden" onClick={(e) => e.stopPropagation()}>
+      <div ref={dialogRef} role="dialog" aria-modal="true" tabIndex={-1} className="bg-white dark:bg-gray-800 rounded-xl shadow-2xl w-full max-w-2xl mx-4 max-h-[80vh] flex flex-col overflow-hidden focus:outline-none" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between px-5 py-4 border-b border-gray-200 dark:border-gray-700 flex-shrink-0">
           <h2 className="text-base font-semibold text-gray-800 dark:text-gray-200">Recent Files</h2>
           <button onClick={onClose} className="p-1 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition">

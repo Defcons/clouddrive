@@ -1,5 +1,6 @@
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import { getCurrentUser, changePassword } from '../api'
+import { useDialog } from '../hooks/useDialog'
 import MfaSection from './MfaSection'
 
 interface Props {
@@ -15,14 +16,7 @@ export default function SettingsModal({ onClose }: Props) {
   const [loading, setLoading] = useState(false)
 
   const user = getCurrentUser()
-
-  useEffect(() => {
-    const handler = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose()
-    }
-    document.addEventListener('keydown', handler)
-    return () => document.removeEventListener('keydown', handler)
-  }, [onClose])
+  const dialogRef = useDialog<HTMLDivElement>(onClose)
 
   const handleChangePassword = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -55,7 +49,11 @@ export default function SettingsModal({ onClose }: Props) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onMouseDown={(e) => { if (e.target === e.currentTarget) onClose() }}>
       <div
-        className="bg-white dark:bg-gray-800 rounded-xl shadow-2xl w-full max-w-md mx-4 overflow-hidden"
+        ref={dialogRef}
+        role="dialog"
+        aria-modal="true"
+        tabIndex={-1}
+        className="bg-white dark:bg-gray-800 rounded-xl shadow-2xl w-full max-w-md mx-4 overflow-hidden focus:outline-none"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
