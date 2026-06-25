@@ -142,6 +142,15 @@ func main() {
 	registerAdminRoutes(mux, adminHandler, authMiddleware, protectedWrite)
 	registerMiscRoutes(mux, auditHandler, tierHandler, diskHandler, versionHandler, authMiddleware, protectedWrite)
 
+	// WebDAV (opt-in): mount the storage as a network drive. Uses Basic Auth
+	// (no MFA), so it's disabled unless explicitly enabled.
+	if os.Getenv("WEBDAV_ENABLED") == "1" {
+		davHandler := handlers.NewWebDAVHandler(storageRoot, userStore)
+		mux.Handle("/webdav/", davHandler)
+		mux.Handle("/webdav", davHandler)
+		slog.Info("WebDAV enabled at /webdav")
+	}
+
 	staticFS, err := fs.Sub(staticFiles, "static")
 	if err != nil {
 		slog.Error("failed to load static files", "err", err)
