@@ -11,7 +11,7 @@ func TestGetIP(t *testing.T) {
 	// getIP reads the package-level trustedProxies; set it for the test and
 	// restore afterwards.
 	orig := trustedProxies
-	trustedProxies = parseTrustedProxies("10.0.0.0/8")
+	trustedProxies = parseTrustedProxies("192.0.2.0/24")
 	t.Cleanup(func() { trustedProxies = orig })
 
 	newReq := func(remoteAddr string, headers map[string]string) *http.Request {
@@ -37,18 +37,18 @@ func TestGetIP(t *testing.T) {
 		},
 		{
 			name:   "trusted proxy prefers X-Real-IP",
-			req:    newReq("10.0.2.102:443", map[string]string{"X-Real-IP": "198.51.100.7", "X-Forwarded-For": "evil, 198.51.100.7"}),
+			req:    newReq("192.0.2.10:443", map[string]string{"X-Real-IP": "198.51.100.7", "X-Forwarded-For": "evil, 198.51.100.7"}),
 			wantIP: "198.51.100.7",
 		},
 		{
 			name:   "trusted proxy uses right-most XFF when no X-Real-IP",
-			req:    newReq("10.0.2.102:443", map[string]string{"X-Forwarded-For": "1.1.1.1, 198.51.100.7"}),
+			req:    newReq("192.0.2.10:443", map[string]string{"X-Forwarded-For": "1.1.1.1, 198.51.100.7"}),
 			wantIP: "198.51.100.7",
 		},
 		{
 			name:   "trusted proxy with no headers falls back to peer",
-			req:    newReq("10.0.2.102:443", nil),
-			wantIP: "10.0.2.102",
+			req:    newReq("192.0.2.10:443", nil),
+			wantIP: "192.0.2.10",
 		},
 	}
 	for _, tc := range tests {
