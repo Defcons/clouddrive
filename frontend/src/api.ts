@@ -617,6 +617,34 @@ export async function getAuditLog(limit = 200): Promise<{ timestamp: string; act
   return res.json()
 }
 
+// ---- Active sessions ----
+
+export type ActiveSession = {
+  id: string
+  createdAt: number
+  lastSeen: number
+  userAgent: string
+  ip: string
+  current: boolean
+}
+
+export async function listSessions(): Promise<ActiveSession[]> {
+  const res = await fetch(`${API_BASE}/auth/sessions`, FETCH_OPTS)
+  if (!res.ok) throw new Error('Failed to load sessions')
+  return res.json()
+}
+
+export async function revokeSession(id: string) {
+  const res = await fetch(`${API_BASE}/auth/sessions/revoke`, {
+    ...FETCH_OPTS,
+    method: 'POST',
+    headers: await writeHeaders(),
+    body: JSON.stringify({ id }),
+  })
+  if (!res.ok) throw new Error((await res.text()) || 'Failed to revoke session')
+  return res.json()
+}
+
 // ---- File versions ----
 
 export type FileVersion = { id: string; size: number; savedAt: number }
