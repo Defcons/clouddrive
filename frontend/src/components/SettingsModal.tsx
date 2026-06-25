@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { getCurrentUser, changePassword } from '../api'
 import { useDialog } from '../hooks/useDialog'
 import MfaSection from './MfaSection'
+import UserManagement from './UserManagement'
 
 interface Props {
   onClose: () => void
@@ -145,6 +146,13 @@ export default function SettingsModal({ onClose }: Props) {
           <hr className="border-gray-100 dark:border-gray-700" />
 
           <MfaSection />
+
+          {user.role === 'admin' && (
+            <>
+              <hr className="border-gray-100 dark:border-gray-700" />
+              <UserManagement />
+            </>
+          )}
         </div>
       </div>
     </div>

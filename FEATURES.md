@@ -10,7 +10,7 @@ Goal: implement features #1–#9 from the recommendations, each polished + teste
 1. **Thumbnail endpoint + cache** — fast image grids/lists (pure-Go scaler, cached). — ✅ DONE
 2. **HTTP Range support** for download/preview — video seek + resumable. — ✅ DONE
 3. **Chunked/resumable uploads** — large uploads survive drops. — TODO
-4. **Admin user-management UI** — add/remove users, roles, home folders. — TODO
+4. **Admin user-management UI** — add/remove users, roles, home folders. — ✅ DONE
 5. **WebDAV endpoint** — mount as a native drive (needs `x/net/webdav`). — TODO (dep check)
 6. **Per-user storage quotas** — enforce caps on upload. — ✅ DONE
 7. **File versioning** — keep previous copy on overwrite. — TODO
@@ -18,6 +18,11 @@ Goal: implement features #1–#9 from the recommendations, each polished + teste
 9. **Full-text / content search** — search inside text/PDF. — TODO
 
 ## Done
+### #4 — Admin user management
+- Backend: `UserStore.ListUsers/CreateUser/UpdateUser/DeleteUser` with validation (unique username, ≥8-char password, role ∈ {admin,user}) and **last-admin protection** (can't demote/delete the only admin); password change bumps PwVersion (invalidates sessions). `AdminHandler` (every method re-checks `role==admin`) on `GET/POST/DELETE /api/admin/users` + `POST /api/admin/users/update`; can't delete your own account.
+- Frontend: `UserManagement` component (admin-only section in SettingsModal) — list with role/MFA/quota badges, add-user form, inline edit (home/role/quota/password), delete with confirm. Quota shown/entered in MB/GB.
+- Tests: `services/usercrud_test.go` — create (+dup/weak-pw/bad-role rejects), update bumps PwVersion, last-admin protection, delete.
+
 ### #6 — Per-user storage quotas
 - Added `Quota int64` (bytes, 0=unlimited) to the User model + `UserStore.GetQuota`. `FileHandler.SetQuotaLookup` injects it (no constructor change); `Upload` rejects with 507 if `dirSize(home)+incoming > quota`. Only quota'd users pay the home-folder measurement cost. Caller's quota is also surfaced in `/api/disk`.
 - Tests: `handlers/quota_test.go` — over-quota upload rejected (file not written), within-quota allowed, unset quota unlimited.
