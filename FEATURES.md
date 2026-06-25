@@ -7,7 +7,7 @@ Branch: `feat/enhancements` (off `loop/hardening`). Same verification gates as I
 Goal: implement features #1–#9 from the recommendations, each polished + tested, one commit per feature. Never push master.
 
 ## Plan / status
-1. **Thumbnail endpoint + cache** — fast image grids/lists (pure-Go scaler, cached). — TODO
+1. **Thumbnail endpoint + cache** — fast image grids/lists (pure-Go scaler, cached). — ✅ DONE
 2. **HTTP Range support** for download/preview — video seek + resumable. — ✅ DONE
 3. **Chunked/resumable uploads** — large uploads survive drops. — TODO
 4. **Admin user-management UI** — add/remove users, roles, home folders. — TODO
@@ -18,6 +18,11 @@ Goal: implement features #1–#9 from the recommendations, each polished + teste
 9. **Full-text / content search** — search inside text/PDF. — TODO
 
 ## Done
+### #1 — Thumbnail endpoint + cache
+- `GET /api/files/thumbnail?path=` (auth-wrapped): decodes jpg/png/gif (stdlib), downscales to ≤256px longest side with a pure-Go area-averaging scaler, encodes JPEG q82, caches to `<root>/.thumbs/<sha256(path|size|mtime|dim)>.jpg`. Edited files regenerate (key includes size+mtime). Types stdlib can't decode (webp/svg/bmp) or that fail to decode fall back to streaming the original via ServeContent — no regression. `.thumbs` is a dotdir, excluded from listing/search/recent/disk.
+- Frontend: `getThumbnailUrl()`; FileExplorer list+grid image tiles now load thumbnails instead of full originals (preview modal still uses full-res). The existing onError → FileIcon fallback covers any failure.
+- Tests: `handlers/thumbnail_test.go` — 1000×500 → 256×128 JPEG + on-disk cache reused; small image not upscaled.
+
 ### #2 — HTTP Range support
 - `Download` (file branch) and `Preview` now use `http.ServeContent` instead of `io.Copy`, adding `Range`/`If-Range`/conditional-request handling, `Accept-Ranges`, and correct `Content-Length`. Video/audio previews can seek; interrupted downloads resume.
 - Test: `handlers/range_test.go` — full request advertises `Accept-Ranges: bytes`; `Range: bytes=2-5` returns 206 with exactly those bytes + `Content-Range`.
