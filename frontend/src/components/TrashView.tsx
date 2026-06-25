@@ -25,12 +25,14 @@ function formatDate(ms: number): string {
 export default function TrashView({ onClose, onNavigate }: Props) {
   const [items, setItems] = useState<TrashItem[]>([])
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState('')
 
   const refresh = () => {
     setLoading(true)
+    setError('')
     listTrash()
       .then(setItems)
-      .catch(() => setItems([]))
+      .catch(() => setError('Couldn’t load trash. Try again.'))
       .finally(() => setLoading(false))
   }
 
@@ -43,10 +45,13 @@ export default function TrashView({ onClose, onNavigate }: Props) {
   }, [onClose])
 
   const handleRestore = async (id: string) => {
+    setError('')
     try {
       await restoreFromTrash(id)
       refresh()
-    } catch {}
+    } catch {
+      setError('Failed to restore item.')
+    }
   }
 
   const handleDelete = async (id: string) => {
@@ -57,10 +62,13 @@ export default function TrashView({ onClose, onNavigate }: Props) {
       confirmLabel: 'Delete forever',
     })
     if (!ok) return
+    setError('')
     try {
       await deleteFromTrash(id)
       refresh()
-    } catch {}
+    } catch {
+      setError('Failed to delete item.')
+    }
   }
 
   const handleEmpty = async () => {
@@ -71,14 +79,17 @@ export default function TrashView({ onClose, onNavigate }: Props) {
       confirmLabel: 'Empty trash',
     })
     if (!ok) return
+    setError('')
     try {
       await emptyTrash()
       refresh()
-    } catch {}
+    } catch {
+      setError('Failed to empty trash.')
+    }
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={onClose}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onMouseDown={(e) => { if (e.target === e.currentTarget) onClose() }}>
       <div className="bg-white dark:bg-gray-800 rounded-xl shadow-2xl w-full max-w-3xl mx-0 md:mx-4 max-h-full md:max-h-[80vh] h-full md:h-auto flex flex-col overflow-hidden" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between px-5 py-4 border-b border-gray-200 dark:border-gray-700 flex-shrink-0">
           <div className="flex items-center gap-2">
@@ -101,6 +112,12 @@ export default function TrashView({ onClose, onNavigate }: Props) {
             </button>
           </div>
         </div>
+
+        {error && (
+          <div className="mx-5 mt-3 px-3 py-2 bg-red-50 dark:bg-red-900/30 text-red-600 dark:text-red-400 text-sm rounded-md flex-shrink-0">
+            {error}
+          </div>
+        )}
 
         <div className="flex-1 overflow-y-auto">
           {loading ? (
