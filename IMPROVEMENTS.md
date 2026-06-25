@@ -97,9 +97,14 @@ Working branch: `loop/hardening`. **Never push `master`** — that auto-deploys 
 **Backend** (verified, deferred)
 - LOW: stale keys in permissions/tags/backuptiers stores never pruned on Delete/Rename/Move (a recreated path inherits old ACL/tier).
 - LOW (hardening): `middleware/security.go` CSP allows `style-src 'unsafe-inline'`.
+### Iter 14 — Search race + modal backdrop data-loss
+- **Bug (MED race):** SearchResults search-as-you-type had no stale guard — a slow earlier query could resolve after a newer one (and setState after unmount). Added a cancelled-flag guard.
+- **Bug (MED data loss):** ShareModal/SettingsModal/BatchRename closed on any backdrop `onClick`, so selecting text in an input and releasing on the backdrop discarded unsaved input. Switched to `onMouseDown` with a target check (mirrors `Modal.tsx`).
+- Verified: `npm run build` clean.
+
+## Open / found (remaining — lower priority)
 **Frontend** (verified, deferred)
-- MED: ShareModal/SettingsModal/BatchRename hand-roll overlays instead of reusing the accessible `Modal.tsx` (no focus trap/restore/aria; backdrop closes on click-drag-release → data loss). Adopting `Modal.tsx` fixes all at once.
-- MED: SearchResults search-as-you-type has no stale-response/abort guard.
+- MED: ShareModal/SettingsModal/BatchRename still hand-roll overlays without focus trap/restore/aria (full `Modal.tsx` adoption deferred — its fixed `max-w-md` chrome would change their layouts; needs runtime verification).
 - MED: ShareModal `generated` one-way latch hides the form + has a dead "Generating…" branch.
 - LOW: ContextMenu no keyboard nav / Escape; Ctrl+A selects `files` not `filteredFiles`; `addQuickAccess` localStorage write unguarded (can throw in private mode).
 **Backend / perf**
