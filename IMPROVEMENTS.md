@@ -39,9 +39,13 @@ Working branch: `loop/hardening`. **Never push `master`** — that auto-deploys 
 - **Tests:** `services/trash_test.go` — move/restore round-trip, relative-path traversal denied, no-clobber (restores alongside), unique ids (both payloads survive), permission denied for another user.
 - Note: per-user home-folder *re-confinement* on restore (beyond root + DeletedBy) deferred — would need homeFolder threaded into Restore; current gates (DeletedBy + root containment + delete-time home check) are adequate.
 
+### Iter 4 — Notifications: unbounded growth + id collisions
+- **Bug (CRITICAL, resource):** `Add` documented a "keep last 100 per user" cap that was never implemented → the slice grew forever and `save()` rewrote the whole file (MarshalIndent) on every add → O(n²) disk over the app's life. Now `trimPerUser` caps each user's history at 100 (other users untouched, newest kept).
+- **Bug (LOW):** notification id was 1-second granular (`<ts>_<user>`) → collisions within a second made `MarkRead` mark duplicates. Now includes a random suffix.
+- **Tests:** `services/notifications_test.go` — per-user cap, other users unaffected, newest survives trim, ids unique, persistence round-trip.
+
 ## Open / found (verified hypotheses from parallel audit 2026-06-25 — fix next, each needs repro+test)
 **Backend**
-- CRITICAL (notifications): `services/notifications.go` `Add` comment says "keep last 100" but never trims → unbounded slice + full-file O(n) rewrite per add (O(n²) over time).
 - HIGH (audit log): `services/auditlog.go` if `OpenFile` fails, `Log` silently no-ops with no startup error → audit silently disabled. Make it log/fail-fast.
 - HIGH (login enum): `services/userstore.go` `Authenticate` skips bcrypt when user not found → timing oracle for username enumeration. Fix: compare against a dummy hash.
 - MED (rate limit): `middleware/ratelimit.go` keys on left-most XFF behind trusted proxy; if proxy appends (nginx default `$proxy_add_x_forwarded_for`) the client-supplied left-most value is trusted → limiter bypass. Prefer X-Real-IP / right-most hop.

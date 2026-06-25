@@ -52,11 +52,15 @@ func (s *NotificationStore) save() error {
 	return os.Rename(tmpPath, s.filePath)
 }
 
+const maxNotificationsPerUser = 100
+
 func (s *NotificationStore) Add(username, message, link string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	id := time.Now().Format("20060102150405") + "_" + username
+	// Random suffix avoids id collisions for notifications added to the same
+	// user within the same second.
+	id := time.Now().Format("20060102150405") + "_" + randHex(4) + "_" + username
 	s.notifications = append(s.notifications, Notification{
 		ID:        id,
 		Username:  username,
@@ -66,8 +70,35 @@ func (s *NotificationStore) Add(username, message, link string) error {
 		CreatedAt: time.Now().UnixMilli(),
 	})
 
-	// Keep only last 100 per user
+	// Cap history per user so the store (and the full-file rewrite below) can't
+	// grow without bound.
+	s.notifications = trimPerUser(s.notifications, username, maxNotificationsPerUser)
 	return s.save()
+}
+
+// trimPerUser drops the oldest notifications belonging to username so at most
+// max remain, leaving other users' notifications untouched. Order is preserved
+// (append order is chronological).
+func trimPerUser(items []Notification, username string, max int) []Notification {
+	count := 0
+	for _, n := range items {
+		if n.Username == username {
+			count++
+		}
+	}
+	if count <= max {
+		return items
+	}
+	drop := count - max
+	out := make([]Notification, 0, len(items)-drop)
+	for _, n := range items {
+		if n.Username == username && drop > 0 {
+			drop--
+			continue
+		}
+		out = append(out, n)
+	}
+	return out
 }
 
 func (s *NotificationStore) GetUnread(username string) []Notification {
