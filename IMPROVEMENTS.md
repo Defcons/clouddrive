@@ -160,10 +160,15 @@ Working branch: `loop/hardening`. **Never push `master`** — that auto-deploys 
 - **Tests:** `services/movepath_test.go` — PrunePath removes path+descendants but not a sibling-prefix; permanent delete triggers the pruner with the original path.
 - Stale-key story now complete: Move/Rename migrate (iter 23), permanent delete prunes (iter 24), Restore preserves.
 
-## Open / found (remaining — low priority / needs design input)
-**Backend**
-- CSP `style-src 'unsafe-inline'` — the public share pages emit inline styles, so tightening needs those refactored first.
-- Copy doesn't duplicate metadata (a copy of a private folder is public) — arguably correct (a copy is a new object) but worth a deliberate decision; non-admins can only copy within their own home, so not a clear leak.
+### Iter 25 — Share upload was CSP-broken; removed all inline JS
+- **Bug (functional):** the collaborate-share upload UI in `serveBrowsePage` used inline `<script>` + `onclick`/`onchange` handlers, but the global CSP is `script-src 'self'` (no `'unsafe-inline'`) — so the browser blocked all of it and the upload button did nothing. Replaced with a no-JS multipart `<form>` (visible file input + submit) and made `ShareHandler.Upload` do Post/Redirect/Get back to the browse page (was returning raw JSON the form submit would navigate to). The share surface now has ZERO inline JS, so `script-src 'self'` is honored with no exceptions.
+- **Tests:** `handlers/share_test.go` — browse page contains no `<script`/`on*=`/`addEventListener` and still renders a working file+submit upload form.
+- **Decision (CSP style-src):** left `style-src 'unsafe-inline'` as-is. The share pages style with inline `<style>`/`style=""`; externalizing all of it is a large, low-value refactor (style injection is far less dangerous than script, and all interpolated values are `html.EscapeString`'d). Documented rather than chased.
+- **Decision (Copy metadata):** left Copy NOT inheriting permissions/tags/tier. Traced it — not a leak: non-admins can only copy within their own home (checkAccess gates source+dest), and a copy is reasonably a fresh public object. Changing it would be a behavior surprise on a hunch.
+
+## Open / found (remaining — low priority, deferred with reason)
+**Frontend** (LOW a11y, runtime-verification-gated)
+- TrashView/RecentFiles/AuditLogModal hand-rolled modals lack a focus trap (adopting `Modal.tsx` changes their layout — needs a human to eyeball it running). ContextMenu/BulkContextMenu/FileFilter dropdowns lack arrow-key nav (consistent, low impact).
 **Backend**
 - LOW: stale keys in permissions/tags/backuptiers stores never pruned on Delete/Rename/Move; CSP `style-src 'unsafe-inline'` (share pages use inline styles — needs care).
 **Frontend** (verified, deferred)
