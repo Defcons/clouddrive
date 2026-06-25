@@ -50,11 +50,13 @@ Working branch: `loop/hardening`. **Never push `master`** — that auto-deploys 
 - **Tests:** `services/userstore_test.go` (correct/wrong/unknown + snapshot isolation) and `services/auditlog_test.go` (round-trip newest-first + degrades safely without panic).
 - Deferred (latent, not live): `Authenticate`/`GetUser` returned `User.BackupCodes` slice still aliases store backing array — handlers don't read it today; proper fix is a `PublicUser` return type (bigger change).
 
-## Open / found (verified hypotheses from parallel audit 2026-06-25 — fix next, each needs repro+test)
+### Iter 6 — Rate-limiter XFF spoofing (right-most hop)
+- **Bug (MED):** behind a trusted proxy with no `X-Real-IP`, `getIP` used the LEFT-most `X-Forwarded-For` entry, which is client-controlled when the proxy appends (`$proxy_add_x_forwarded_for`) → an attacker rotates it to evade the login limiter. Now uses the right-most entry (the hop the trusted proxy actually observed; unforgeable). `X-Real-IP` is still preferred first; untrusted-peer path still ignores headers.
+- **Tests:** `middleware/ratelimit_test.go` — getIP table (spoof ignored / X-Real-IP preferred / right-most XFF / peer fallback) + lockout-and-reset.
+
+## Open / found (remaining — fix next)
 **Backend**
-- MED (rate limit): `middleware/ratelimit.go` keys on left-most XFF behind trusted proxy; if proxy appends (nginx default `$proxy_add_x_forwarded_for`) the client-supplied left-most value is trusted → limiter bypass. Prefer X-Real-IP / right-most hop.
-- MED (trash list race): admin branch of `List` returns the live backing slice; encoded after lock released while mutators reslice in place → data race. Return a copy.
-- LOW: notification ID 1-second granularity collision; tracked build artifact `frontend/tsconfig.tsbuildinfo` should be gitignored.
+- LOW: tracked build artifact `frontend/tsconfig.tsbuildinfo` should be gitignored (also `frontend/package-lock.json` LF noise — pre-existing).
 
 **Frontend**
 - HIGH: session expiry (401) never redirects to login — app becomes a dead error-banner husk (`api.ts` + `FileExplorer.refresh`). Add 401 → onLogout.
