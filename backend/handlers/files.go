@@ -321,7 +321,6 @@ func (h *FileHandler) Download(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", mimeType)
 	w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="%s"`, info.Name()))
-	w.Header().Set("Content-Length", fmt.Sprintf("%d", info.Size()))
 
 	f, err := os.Open(absPath)
 	if err != nil {
@@ -329,7 +328,9 @@ func (h *FileHandler) Download(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer f.Close()
-	io.Copy(w, f)
+	// ServeContent handles Range requests (resumable / partial downloads),
+	// conditional requests, and Content-Length.
+	http.ServeContent(w, r, info.Name(), info.ModTime(), f)
 }
 
 func (h *FileHandler) Preview(w http.ResponseWriter, r *http.Request) {
@@ -364,7 +365,6 @@ func (h *FileHandler) Preview(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", mimeType)
 	w.Header().Set("Content-Disposition", fmt.Sprintf(`inline; filename="%s"`, info.Name()))
-	w.Header().Set("Content-Length", fmt.Sprintf("%d", info.Size()))
 	w.Header().Set("Cache-Control", "private, max-age=3600")
 
 	f, err := os.Open(absPath)
@@ -373,7 +373,8 @@ func (h *FileHandler) Preview(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer f.Close()
-	io.Copy(w, f)
+	// ServeContent adds Range support so audio/video previews can seek.
+	http.ServeContent(w, r, info.Name(), info.ModTime(), f)
 }
 
 func (h *FileHandler) Upload(w http.ResponseWriter, r *http.Request) {
