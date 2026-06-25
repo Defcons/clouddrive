@@ -618,17 +618,27 @@ export default function FileExplorer({ initialPath, onLogout }: { initialPath: s
     return filteredFiles.filter((f) => selectedFiles.has(f.path))
   }
 
+  // summarizeFailures builds a short "name1, name2, …" tail for a toast.
+  const summarizeFailures = (names: string[]): string =>
+    names.slice(0, 3).join(', ') + (names.length > 3 ? `, +${names.length - 3} more` : '')
+
   const handleBulkDownload = async () => {
     setContextMenu(null)
     const selected = getSelectedFileObjects()
+    const failed: string[] = []
     for (const file of selected) {
       try {
         await downloadFile(file.path)
       } catch {
-        setError(`Failed to download ${file.name}`)
+        failed.push(file.name)
       }
     }
     setSelectedFiles(new Set())
+    if (failed.length === 0) {
+      toast.success(`Downloaded ${selected.length} item${selected.length !== 1 ? 's' : ''}`)
+    } else {
+      toast.error(`Failed to download ${failed.length} of ${selected.length}: ${summarizeFailures(failed)}`)
+    }
   }
 
   const handleBulkDelete = async () => {
@@ -641,16 +651,23 @@ export default function FileExplorer({ initialPath, onLogout }: { initialPath: s
       confirmLabel: 'Move to trash',
     })
     if (!ok) return
+    const failed: string[] = []
     for (const file of selected) {
       try {
         await deleteFile(file.path)
       } catch {
-        setError(`Failed to delete ${file.name}`)
+        failed.push(file.name)
       }
     }
     setSelectedFiles(new Set())
     await refresh()
     window.dispatchEvent(new Event('sidebar-refresh'))
+    const okCount = selected.length - failed.length
+    if (failed.length === 0) {
+      toast.success(`Moved ${okCount} item${okCount !== 1 ? 's' : ''} to trash`)
+    } else {
+      toast.error(`Deleted ${okCount} of ${selected.length}; failed: ${summarizeFailures(failed)}`)
+    }
   }
 
   // Clear selection when path changes
@@ -989,12 +1006,16 @@ export default function FileExplorer({ initialPath, onLogout }: { initialPath: s
                       <div className="flex items-center gap-2.5">
                         <div className="relative flex-shrink-0">
                           {!file.isDir && /\.(jpg|jpeg|png|gif|webp|svg|bmp)$/i.test(file.name) ? (
-                            <img
-                              src={getPreviewUrl(file.path)}
-                              alt=""
-                              className="w-5 h-5 rounded object-cover"
-                              loading="lazy"
-                            />
+                            <>
+                              <img
+                                src={getPreviewUrl(file.path)}
+                                alt=""
+                                className="w-5 h-5 rounded object-cover"
+                                loading="lazy"
+                                onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; (e.target as HTMLImageElement).nextElementSibling?.classList.remove('hidden') }}
+                              />
+                              <span className="hidden"><FileIcon name={file.name} isDir={file.isDir} /></span>
+                            </>
                           ) : (
                             <FileIcon name={file.name} isDir={file.isDir} />
                           )}
