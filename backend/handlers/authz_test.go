@@ -6,6 +6,8 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -105,5 +107,37 @@ func TestBackupTierListAdminOnly(t *testing.T) {
 	if rec := serve(h.List, http.MethodGet, "/api/backup-tiers", "",
 		sessionToken(t, "admin", "admin", "/")); rec.Code != http.StatusOK {
 		t.Errorf("admin List: got %d, want 200", rec.Code)
+	}
+}
+
+func TestDiskUsagePerUserScopedToNonAdmin(t *testing.T) {
+	root := t.TempDir()
+	for _, u := range []string{"Nika", "Martin"} {
+		if err := os.MkdirAll(filepath.Join(root, u), 0755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(root, u, "f.txt"), []byte("data"), 0644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	h := NewDiskHandler(root)
+
+	// Non-admin sees only their own folder in the per-user breakdown.
+	rec := serve(h.Usage, http.MethodGet, "/api/disk", "", sessionToken(t, "nika", "user", "/Nika"))
+	var resp struct {
+		PerUser []struct {
+			Username string `json:"username"`
+		} `json:"perUser"`
+	}
+	_ = json.Unmarshal(rec.Body.Bytes(), &resp)
+	if len(resp.PerUser) != 1 || resp.PerUser[0].Username != "Nika" {
+		t.Errorf("non-admin should see only their own usage, got %+v", resp.PerUser)
+	}
+
+	// Admin sees all users.
+	rec = serve(h.Usage, http.MethodGet, "/api/disk", "", sessionToken(t, "admin", "admin", "/"))
+	_ = json.Unmarshal(rec.Body.Bytes(), &resp)
+	if len(resp.PerUser) != 2 {
+		t.Errorf("admin should see all users, got %+v", resp.PerUser)
 	}
 }

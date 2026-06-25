@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"clouddrive/middleware"
 	"encoding/json"
 	"net/http"
 	"os"
@@ -36,6 +37,11 @@ func (h *DiskHandler) Usage(w http.ResponseWriter, r *http.Request) {
 	// Get filesystem total/free space (platform-specific; see disk_unix.go).
 	usage.TotalSpace, usage.FreeSpace = fsSpace(h.root)
 
+	// Non-admins must only see their own home folder's usage — the per-user
+	// breakdown would otherwise leak every user's folder name and size.
+	role := middleware.GetRole(r)
+	ownDir := strings.Trim(middleware.GetHomeFolder(r), "/")
+
 	// Calculate per-user sizes from top-level directories
 	userSizes := make(map[string]int64)
 
@@ -43,6 +49,9 @@ func (h *DiskHandler) Usage(w http.ResponseWriter, r *http.Request) {
 	if err == nil {
 		for _, entry := range entries {
 			if !entry.IsDir() || strings.HasPrefix(entry.Name(), ".") {
+				continue
+			}
+			if role != "admin" && entry.Name() != ownDir {
 				continue
 			}
 			dirPath := filepath.Join(h.root, entry.Name())
