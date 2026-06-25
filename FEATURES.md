@@ -13,11 +13,18 @@ Goal: implement features #1–#9 from the recommendations, each polished + teste
 4. **Admin user-management UI** — add/remove users, roles, home folders. — ✅ DONE
 5. **WebDAV endpoint** — mount as a native drive (needs `x/net/webdav`). — TODO (dep check)
 6. **Per-user storage quotas** — enforce caps on upload. — ✅ DONE
-7. **File versioning** — keep previous copy on overwrite. — TODO
+7. **File versioning** — keep previous copy on overwrite. — ✅ DONE
 8. **Active-session management** — list + revoke signed-in devices. — TODO
 9. **Full-text / content search** — search inside text/PDF. — TODO
 
 ## Done
+### #7 — File versioning
+- `VersionStore` (`<root>/.versions/<sha256(path)>/<nanotime>.bin`, retains newest 10). `Upload` snapshots an existing file before overwriting it. Restore snapshots the current file first (reversible). Version id is the nanotime — validated numeric to block path traversal.
+- Endpoints: `GET /api/files/versions`, `GET /api/files/versions/download` (ServeContent), `POST /api/files/versions/restore`. All checkAccess-gated.
+- Frontend: "Version history" context-menu item → `VersionsModal` (list with timestamps/sizes/"latest" badge, per-version download + restore-with-confirm; focus-trapped via useDialog).
+- Tests: `services/versions_test.go` — save/list/restore round-trip (+ reversible snapshot), retention cap, bad-id (traversal) rejected.
+- NOTE: versions keyed by path → a rename/move starts a fresh history (old versions orphaned under `.versions`); acceptable for v1.
+
 ### #4 — Admin user management
 - Backend: `UserStore.ListUsers/CreateUser/UpdateUser/DeleteUser` with validation (unique username, ≥8-char password, role ∈ {admin,user}) and **last-admin protection** (can't demote/delete the only admin); password change bumps PwVersion (invalidates sessions). `AdminHandler` (every method re-checks `role==admin`) on `GET/POST/DELETE /api/admin/users` + `POST /api/admin/users/update`; can't delete your own account.
 - Frontend: `UserManagement` component (admin-only section in SettingsModal) — list with role/MFA/quota badges, add-user form, inline edit (home/role/quota/password), delete with confirm. Quota shown/entered in MB/GB.
