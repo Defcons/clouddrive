@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import type { FileItem as FileItemType, ViewMode, Clipboard, TAG_COLORS } from '../types'
-import { listFiles, downloadFile, uploadFiles, createFolder, renameFile, deleteFile, logout, isPreviewable, addQuickAccess, setFolderPrivate, removeFolderPrivate, moveFiles, copyFiles, extractZip, compressFiles, setFileTags, getDiskUsage, getThumbnailUrl, setBackupTier } from '../api'
+import { listFiles, downloadFile, uploadFiles, uploadFileChunked, CHUNK_THRESHOLD, createFolder, renameFile, deleteFile, logout, isPreviewable, addQuickAccess, setFolderPrivate, removeFolderPrivate, moveFiles, copyFiles, extractZip, compressFiles, setFileTags, getDiskUsage, getThumbnailUrl, setBackupTier } from '../api'
 import Breadcrumb from './Breadcrumb'
 import Toolbar from './Toolbar'
 import FileIcon from './FileIcon'
@@ -317,11 +317,17 @@ export default function FileExplorer({ initialPath, onLogout }: { initialPath: s
   const handleUpload = async (fileList: FileList) => {
     setUploadProgress(0)
     try {
-      await uploadFiles(path, Array.from(fileList), setUploadProgress)
+      const all = Array.from(fileList)
+      // Small files go in one batched request; large files use the chunked,
+      // drop-resilient path one at a time.
+      const small = all.filter((f) => f.size <= CHUNK_THRESHOLD)
+      const large = all.filter((f) => f.size > CHUNK_THRESHOLD)
+      if (small.length) await uploadFiles(path, small, setUploadProgress)
+      for (const f of large) await uploadFileChunked(path, f, setUploadProgress)
       await refresh()
-      toast.success(`Uploaded ${fileList.length} file${fileList.length !== 1 ? 's' : ''}`)
-    } catch {
-      toast.error('Upload failed')
+      toast.success(`Uploaded ${all.length} file${all.length !== 1 ? 's' : ''}`)
+    } catch (e: any) {
+      toast.error(e?.message || 'Upload failed')
     } finally {
       setUploadProgress(null)
     }

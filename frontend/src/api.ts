@@ -295,6 +295,53 @@ export async function uploadFiles(
   })
 }
 
+// Files larger than this use the chunked/resumable path so a dropped
+// connection only loses the current chunk, not the whole upload.
+export const CHUNK_THRESHOLD = 8 * 1024 * 1024
+const CHUNK_SIZE = 8 * 1024 * 1024
+
+export async function uploadFileChunked(
+  path: string,
+  file: File,
+  onProgress?: (pct: number) => void,
+) {
+  const uploadId = (crypto.randomUUID?.() || `u${Date.now()}${Math.floor(Math.random() * 1e9)}`)
+  const total = Math.max(1, Math.ceil(file.size / CHUNK_SIZE))
+  const csrf = await ensureCSRF()
+
+  for (let i = 0; i < total; i++) {
+    const blob = file.slice(i * CHUNK_SIZE, (i + 1) * CHUNK_SIZE)
+    let ok = false
+    let lastStatus = 0
+    for (let attempt = 0; attempt < 3 && !ok; attempt++) {
+      try {
+        const res = await fetch(
+          `${API_BASE}/files/upload/chunk?uploadId=${encodeURIComponent(uploadId)}&index=${i}&path=${encodeURIComponent(path)}`,
+          { ...FETCH_OPTS, method: 'POST', headers: { 'X-CSRF-Token': csrf }, body: blob },
+        )
+        lastStatus = res.status
+        if (res.ok) ok = true
+        else if (res.status === 401) { checkAuthExpired(res); throw new Error('Session expired') }
+      } catch {
+        // network blip — retry this chunk
+      }
+    }
+    if (!ok) throw new Error(lastStatus === 413 ? 'Chunk too large' : 'Upload failed (network)')
+    onProgress?.(Math.round(((i + 1) / total) * 100))
+  }
+
+  const res = await fetch(`${API_BASE}/files/upload/complete`, {
+    ...FETCH_OPTS,
+    method: 'POST',
+    headers: await writeHeaders(),
+    body: JSON.stringify({ uploadId, name: file.name, path, total }),
+  })
+  if (!res.ok) {
+    if (res.status === 401) checkAuthExpired(res)
+    throw new Error((await res.text()) || 'Upload failed')
+  }
+}
+
 export async function createFolder(path: string, name: string) {
   const res = await fetch(`${API_BASE}/files/mkdir`, {
     ...FETCH_OPTS,
