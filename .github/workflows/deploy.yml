@@ -32,9 +32,15 @@ jobs:
           username: ${{ secrets.DEPLOY_USER }}
           key: ${{ secrets.DEPLOY_SSH_KEY }}
           script: |
+            set -e
             cd /opt/clouddrive
+            # The repo is public — fetch anonymously over HTTPS so the deploy
+            # doesn't depend on a deploy key/token (a broken remote previously
+            # made git fetch fail silently and ship stale code).
+            git remote set-url origin https://github.com/Defcons/clouddrive.git
             git fetch origin
             git reset --hard origin/master
+            git log -1 --oneline
             if [ ! -f .env ]; then
               cp .env.example .env
               echo "WARNING: .env created from example — update credentials!"
