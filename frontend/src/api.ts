@@ -449,17 +449,26 @@ export function getQuickAccess(): { name: string; path: string }[] {
   }
 }
 
+// writeQuickAccess persists the list, swallowing storage errors (e.g. Safari
+// private mode or quota exceeded) so a click handler can't crash the app.
+function writeQuickAccess(items: { name: string; path: string }[]) {
+  try {
+    localStorage.setItem(quickAccessKey(), JSON.stringify(items))
+  } catch {
+    // Non-fatal: quick access is a convenience, not critical state.
+  }
+}
+
 export function addQuickAccess(name: string, path: string) {
   const items = getQuickAccess()
   if (!items.find((i) => i.path === path)) {
     items.push({ name, path })
-    localStorage.setItem(quickAccessKey(), JSON.stringify(items))
+    writeQuickAccess(items)
   }
 }
 
 export function removeQuickAccess(path: string) {
-  const items = getQuickAccess().filter((i) => i.path !== path)
-  localStorage.setItem(quickAccessKey(), JSON.stringify(items))
+  writeQuickAccess(getQuickAccess().filter((i) => i.path !== path))
 }
 
 // Return types kept loose here — concrete shapes live in types.ts and are
