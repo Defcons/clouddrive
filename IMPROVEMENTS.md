@@ -112,12 +112,19 @@ Working branch: `loop/hardening`. **Never push `master`** — that auto-deploys 
 - **Tests:** added to `handlers/authz_test.go` — non-admin sees only own usage, admin sees all.
 - Audited SOUND (no change): `/api/audit` (admin-gated), notifications handlers (recipient scoped to session username server-side — no cross-user read/mark), `/api/version` (no sensitive data).
 
+### Iter 17 — NotificationBell polling hardening
+- Added `.catch` + mounted guards to the 30s unread poll and the on-open fetch (network failure no longer throws an unhandled rejection every 30s; no setState-after-unmount), and wrapped mark-all-read in try/catch.
+
+### Iter 18 — TrashView/RecentFiles error feedback
+- **Bug (MED):** TrashView restore/delete/empty swallowed errors (`catch {}`) → destructive actions failed silently (user assumes success). Added a local error banner shown on any failure (these modals are self-contained, no shared toast).
+- **Bug (MED):** RecentFiles load failure showed a false "No recent files" empty state. Now distinguishes a load error ("Couldn't load…") from genuinely empty + mounted guard.
+- Also switched both modals' backdrop close to `onMouseDown`+target-check (no accidental close on drag-release).
+- Verified: `npm run build` clean.
+
 ## Open / found (remaining — lower priority)
-**Frontend** (verified — from audit round 2, fix next)
-- HIGH-ish: NotificationBell polls every 30s with no `.catch` (unhandled rejections) and keeps polling 401s after logout (global onAuthExpired only covers listFiles); setState-after-unmount.
-- MED: TrashView destructive actions (restore/delete/empty) swallow errors silently (`catch {}`) → no feedback on failure; RecentFiles load failure shows false "No recent files" empty state.
+**Frontend** (verified, deferred)
 - MED: LoginPage calls `onLogin()` inside the try, so a post-login throw shows "Invalid code" (misleading after the TOTP was already consumed).
-- LOW: FileInfoPanel image preview no onError fallback; TrashView/RecentFiles hand-rolled modals lack focus trap; TagPicker tags color-only (no aria-pressed/label).
+- LOW: FileInfoPanel image preview no onError fallback; TrashView/RecentFiles hand-rolled modals lack focus trap; TagPicker tags color-only (no aria-pressed/label); ShareModal `generated` latch + dead "Generating…" branch.
 **Frontend** (verified, deferred)
 - MED: ShareModal/SettingsModal/BatchRename still hand-roll overlays without focus trap/restore/aria (full `Modal.tsx` adoption deferred — its fixed `max-w-md` chrome would change their layouts; needs runtime verification).
 - MED: ShareModal `generated` one-way latch hides the form + has a dead "Generating…" branch.
