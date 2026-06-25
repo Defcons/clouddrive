@@ -59,3 +59,43 @@ func TestTagStoreMovePath(t *testing.T) {
 		t.Error("stale tag left at old path")
 	}
 }
+
+func TestPermissionStorePrunePath(t *testing.T) {
+	ps := NewPermissionStore(t.TempDir())
+	_ = ps.SetPrivate("/Alice/x", "alice", []string{"alice"})
+	_ = ps.SetPrivate("/Alice/x/inner", "alice", []string{"alice"})
+	_ = ps.SetPrivate("/Alice/xy", "alice", []string{"alice"}) // sibling prefix
+
+	if err := ps.PrunePath("/Alice/x"); err != nil {
+		t.Fatal(err)
+	}
+	if ps.IsPrivate("/Alice/x") || ps.IsPrivate("/Alice/x/inner") {
+		t.Error("path and descendant should be pruned")
+	}
+	if !ps.IsPrivate("/Alice/xy") {
+		t.Error("sibling /Alice/xy must not be pruned by /Alice/x")
+	}
+}
+
+func TestTrashPermanentDeleteTriggersPruner(t *testing.T) {
+	root := t.TempDir()
+	store := NewTrashStore(root)
+	var pruned []string
+	store.SetMetadataPruner(func(p string) { pruned = append(pruned, p) })
+
+	orig := filepath.Join(root, "doc.txt")
+	writeFile(t, orig, "x")
+	if err := store.MoveToTrash(orig, "/doc.txt", "alice"); err != nil {
+		t.Fatal(err)
+	}
+	items := store.List("alice", "admin")
+
+	// Restore must NOT prune (item kept its metadata while in trash).
+	// Here we permanently delete instead and expect a prune call.
+	if err := store.PermanentDelete(items[0].ID, "alice", "admin"); err != nil {
+		t.Fatal(err)
+	}
+	if len(pruned) != 1 || pruned[0] != "/doc.txt" {
+		t.Errorf("expected pruner called with /doc.txt, got %v", pruned)
+	}
+}

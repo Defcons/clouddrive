@@ -28,6 +28,21 @@ type TrashStore struct {
 	trashDir string
 	manifest []TrashItem
 	mu       sync.Mutex
+	// pruneMetadata, if set, is called with a permanently-removed item's
+	// original path so per-path metadata (permissions/tags/tier) can be dropped.
+	pruneMetadata func(originalPath string)
+}
+
+// SetMetadataPruner registers a callback invoked when an item is permanently
+// removed (permanent delete, empty trash, or expiry).
+func (s *TrashStore) SetMetadataPruner(fn func(originalPath string)) {
+	s.pruneMetadata = fn
+}
+
+func (s *TrashStore) prune(originalPath string) {
+	if s.pruneMetadata != nil {
+		s.pruneMetadata(originalPath)
+	}
 }
 
 func NewTrashStore(storageRoot string) *TrashStore {
@@ -178,6 +193,7 @@ func (s *TrashStore) PermanentDelete(id, username, role string) error {
 
 			os.RemoveAll(item.TrashPath)
 			s.manifest = append(s.manifest[:i], s.manifest[i+1:]...)
+			s.prune(item.OriginalPath)
 			return s.save()
 		}
 	}
@@ -193,6 +209,7 @@ func (s *TrashStore) EmptyTrash(username, role string) error {
 	for _, item := range s.manifest {
 		if role == "admin" || item.DeletedBy == username {
 			os.RemoveAll(item.TrashPath)
+			s.prune(item.OriginalPath)
 		} else {
 			remaining = append(remaining, item)
 		}
@@ -266,6 +283,7 @@ func (s *TrashStore) CleanExpired() {
 	for _, item := range s.manifest {
 		if item.DeletedAt < cutoff {
 			os.RemoveAll(item.TrashPath)
+			s.prune(item.OriginalPath)
 		} else {
 			remaining = append(remaining, item)
 		}

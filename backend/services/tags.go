@@ -100,6 +100,16 @@ func (s *TagStore) MovePath(oldPath, newPath string) error {
 	return nil
 }
 
+// PrunePath drops tags for path and any descendants (permanent delete).
+func (s *TagStore) PrunePath(path string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if prunePathKeys(s.tags, path) {
+		return s.save()
+	}
+	return nil
+}
+
 // GetAllTagged returns all paths that have any tags (for enriching file listings)
 func (s *TagStore) GetAllTagged() map[string][]string {
 	s.mu.RLock()

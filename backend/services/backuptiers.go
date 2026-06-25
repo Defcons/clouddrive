@@ -94,6 +94,16 @@ func (s *BackupTierStore) MovePath(oldPath, newPath string) error {
 	return nil
 }
 
+// PrunePath drops the backup tier for path and any descendants (permanent delete).
+func (s *BackupTierStore) PrunePath(path string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if prunePathKeys(s.tiers, path) {
+		return s.save()
+	}
+	return nil
+}
+
 // All returns a copy of the tiers map
 func (s *BackupTierStore) All() map[string]int {
 	s.mu.RLock()
