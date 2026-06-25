@@ -76,6 +76,15 @@ func (m *AuthMiddleware) Wrap(next http.HandlerFunc) http.HandlerFunc {
 			return
 		}
 
+		// Only full session tokens grant access here. Pre-auth tokens
+		// (mfa_challenge, trusted_device) are signed with the same secret and
+		// carry "sub", so without this check they would be accepted as a
+		// session — letting password-only (no TOTP) reach protected routes.
+		if kind, _ := claims["kind"].(string); kind != "session" {
+			http.Error(w, "Invalid token", http.StatusUnauthorized)
+			return
+		}
+
 		ctx := r.Context()
 		username := ""
 		if sub, ok := claims["sub"].(string); ok {
