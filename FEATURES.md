@@ -9,7 +9,7 @@ Goal: implement features #1–#9 from the recommendations, each polished + teste
 ## Plan / status
 1. **Thumbnail endpoint + cache** — fast image grids/lists (pure-Go scaler, cached). — ✅ DONE
 2. **HTTP Range support** for download/preview — video seek + resumable. — ✅ DONE
-3. **Chunked/resumable uploads** — large uploads survive drops. — TODO
+3. **Chunked/resumable uploads** — large uploads survive drops. — ✅ DONE
 4. **Admin user-management UI** — add/remove users, roles, home folders. — ✅ DONE
 5. **WebDAV endpoint** — mount as a native drive (needs `x/net/webdav`). — TODO (dep check)
 6. **Per-user storage quotas** — enforce caps on upload. — ✅ DONE
@@ -18,6 +18,12 @@ Goal: implement features #1–#9 from the recommendations, each polished + teste
 9. **Full-text / content search** — search inside text files. — ✅ DONE
 
 ## Done
+### #3 — Chunked / resumable uploads
+- Backend: `POST /api/files/upload/chunk` stores parts under `.uploads/<id>/<index>.part` (temp+rename per chunk, 64 MB/chunk cap, ownership claimed via `.owner` file so a guessed id can't be hijacked); `GET .../status` lists received indices (resume); `POST .../complete` verifies all parts, enforces quota on the assembled size, snapshots a version on overwrite, assembles temp+rename, cleans up. All access-checked; uploadId regex-validated (no traversal).
+- Frontend: `uploadFileChunked` (8 MB chunks, 3 retries/chunk, progress, 401→login). `handleUpload` routes files >8 MB through it, small files stay on the batched single POST.
+- Tests: `handlers/chunked_test.go` — assemble 3 chunks → exact bytes + staging cleaned, missing chunk → 400, foreign-writer → 403.
+- NOTE: per-chunk retry survives transient drops within a session; cross-reload resume is possible via the status endpoint but the client doesn't yet persist the uploadId (follow-up).
+
 ### #9 — Content / full-text search
 - `Search` gains an opt-in `&content=1` pass: after filename matches, it scans text files (~25 known extensions, ≤512 KB each, home-scoped, permission-checked, symlink/dot-skipped, 100-result cap) for the query and appends matches with a one-line `Snippet` (deduped against filename hits). Dependency-free.
 - Frontend: a "Search inside file contents" checkbox in the search dropdown (default off to keep instant search fast) + snippet shown under content matches.

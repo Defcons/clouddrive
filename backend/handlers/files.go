@@ -20,6 +20,7 @@ import (
 type FileHandler struct {
 	root       string
 	thumbDir   string
+	uploadDir  string
 	permStore  *services.PermissionStore
 	audit      *services.AuditLogger
 	trash      *services.TrashStore
@@ -115,6 +116,7 @@ func NewFileHandler(root string, permStore *services.PermissionStore, audit *ser
 	return &FileHandler{
 		root:      root,
 		thumbDir:  filepath.Join(root, ".thumbs"),
+		uploadDir: filepath.Join(root, ".uploads"),
 		permStore: permStore,
 		audit:     audit,
 		trash:     trash,
