@@ -15,7 +15,6 @@ import (
 	"sort"
 	"strconv"
 	"strings"
-	"syscall"
 )
 
 type FileHandler struct {
@@ -40,15 +39,11 @@ type FileInfo struct {
 	BackupTier int      `json:"backupTier,omitempty"`
 }
 
-// getCreationTime tries to get the file creation/change time, falls back to ModTime
+// getCreationTime tries to get the file creation/change time, falls back to ModTime.
+// The platform-specific stat lookup lives in stat_unix.go / stat_other.go.
 func getCreationTime(info os.FileInfo) int64 {
-	if stat, ok := info.Sys().(*syscall.Stat_t); ok {
-		// Ctim is the status change time on Linux (closest to creation time available)
-		ctim := stat.Ctim
-		ms := ctim.Sec*1000 + ctim.Nsec/1000000
-		if ms > 0 {
-			return ms
-		}
+	if ms, ok := statCreationMillis(info); ok {
+		return ms
 	}
 	return info.ModTime().UnixMilli()
 }
@@ -114,6 +109,18 @@ func maxUploadBytes() int64 {
 	return 5 << 30
 }
 
+// pathWithinHome reports whether filePath is the user's home folder or a
+// descendant of it. An empty or "/" home folder means unrestricted.
+// The trailing-slash comparison stops "/Nika" from matching "/Nikabackup".
+func pathWithinHome(filePath, homeFolder string) bool {
+	if homeFolder == "" || homeFolder == "/" {
+		return true
+	}
+	cleanPath := filepath.ToSlash(filepath.Clean(filePath))
+	cleanHome := filepath.ToSlash(filepath.Clean(homeFolder))
+	return cleanPath == cleanHome || strings.HasPrefix(cleanPath, cleanHome+"/")
+}
+
 // checkAccess verifies the user can access the given path.
 // Non-admin users are restricted to their home folder.
 func (h *FileHandler) checkAccess(r *http.Request, filePath string) bool {
@@ -121,15 +128,8 @@ func (h *FileHandler) checkAccess(r *http.Request, filePath string) bool {
 	role := middleware.GetRole(r)
 
 	// Enforce home folder restriction for non-admin users
-	if role != "admin" {
-		homeFolder := middleware.GetHomeFolder(r)
-		if homeFolder != "" && homeFolder != "/" {
-			cleanPath := filepath.ToSlash(filepath.Clean(filePath))
-			cleanHome := filepath.ToSlash(filepath.Clean(homeFolder))
-			if cleanPath != cleanHome && !strings.HasPrefix(cleanPath, cleanHome+"/") {
-				return false
-			}
-		}
+	if role != "admin" && !pathWithinHome(filePath, middleware.GetHomeFolder(r)) {
+		return false
 	}
 
 	if h.permStore == nil {
@@ -948,6 +948,11 @@ func (h *FileHandler) Compress(w http.ResponseWriter, r *http.Request) {
 	defer zw.Close()
 
 	for _, p := range req.Paths {
+		// Each source must be accessible to the caller — not just the
+		// destination dir — or a non-admin could zip files outside their home.
+		if !h.checkAccess(r, filepath.ToSlash(filepath.Dir(p))) {
+			continue
+		}
 		absSrc, err := h.safePath(p)
 		if err != nil {
 			continue
@@ -1009,6 +1014,11 @@ func (h *FileHandler) SetTags(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if !h.checkAccess(r, req.Path) {
+		http.Error(w, "Access denied", http.StatusForbidden)
+		return
+	}
+
 	if err := h.tags.SetTags(req.Path, req.Tags); err != nil {
 		http.Error(w, "Failed to set tags", http.StatusInternalServerError)
 		return
@@ -1020,7 +1030,8 @@ func (h *FileHandler) SetTags(w http.ResponseWriter, r *http.Request) {
 
 func (h *FileHandler) GetTags(w http.ResponseWriter, r *http.Request) {
 	path := r.URL.Query().Get("path")
-	if h.tags == nil {
+	if h.tags == nil || !h.checkAccess(r, path) {
+		// Don't leak whether a path exists/has tags to users who can't see it.
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode([]string{})
 		return
