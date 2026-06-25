@@ -107,7 +107,7 @@ func main() {
 	auditHandler := handlers.NewAuditHandler(auditLog)
 	trashHandler := handlers.NewTrashHandler(trashStore, auditLog)
 	notifHandler := handlers.NewNotificationHandler(notifStore)
-	tierHandler := handlers.NewBackupTierHandler(tierStore, auditLog)
+	tierHandler := handlers.NewBackupTierHandler(tierStore, permStore, auditLog)
 
 	mux := http.NewServeMux()
 

@@ -82,12 +82,22 @@ Working branch: `loop/hardening`. **Never push `master`** — that auto-deploys 
 - **Repo hygiene:** `frontend/tsconfig.tsbuildinfo` (a tsc build artifact) was tracked in git → `git rm --cached` + added to `.gitignore`.
 - Verified: `npm run build` clean.
 
+### Iter 12 — CRITICAL authz gaps in backup-tier + permissions read (fresh audit)
+- **Bug (CRITICAL authz):** `backuptiers.go` `Set`/`Get` had NO per-path check → any non-admin could set/read the backup tier of ANY path (e.g. another user's home). `List` returned the whole tier map → leaked every tiered folder's path. Fixed: `Set`/`Get` now gate on `userCanAccess`; `List` is admin-only.
+- **Bug (CRITICAL info-disclosure):** `permissions.go` `GetPermission` returned a path's owner + full `allowedUsers` to ANY authenticated user. Fixed: gate on `userCanAccess`, return `isPrivate:false` (no leak) on denial.
+- **Refactor:** extracted the shared `userCanAccess(r, permStore, path)` gate; `FileHandler.checkAccess` now delegates to it (identical behavior) so handlers can't drift out of the authz pattern.
+- **Tests:** `handlers/authz_test.go` — integration-style through the real auth middleware: GetPermission no-leak cross-home, backup-tier Set denied cross-home, List admin-only.
+- Audited SOUND (no change): `walkFilesNoSymlinks` (Lstat-based symlink skip), `tags.go` HTTP handlers (already gated), all three JSON stores' intra-store concurrency (mutex + tmp+rename).
+
 ## Open / found (remaining — lower priority)
+**Backend** (verified, deferred)
+- LOW: the three JSON stores (`permissions`/`tags`/`backuptiers`) ignore `json.Unmarshal` errors in `load()` → a corrupt file silently loads empty and the next save discards all entries. Also stale keys never pruned on Delete/Rename/Move (a recreated path inherits old ACL/tier).
+- LOW (hardening): `middleware/security.go` CSP allows `style-src 'unsafe-inline'`.
 **Frontend** (verified, deferred)
-- LOW: Ctrl+A selects `files` not `filteredFiles` (left as-is to avoid effect stale-closure risk).
-**Not yet deeply audited** (candidates for a fresh audit pass)
-- Backend: `handlers/permissions.go`, `handlers/backuptiers.go`, `handlers/walk.go` (walkFilesNoSymlinks), `services/tags.go`, `services/backuptiers.go`, `middleware/security.go` (CSP `style-src 'unsafe-inline'`).
-- Frontend: ShareModal, SettingsModal, Sidebar, ContextMenu, BatchRename, SearchResults.
+- MED: ShareModal/SettingsModal/BatchRename hand-roll overlays instead of reusing the accessible `Modal.tsx` (no focus trap/restore/aria; backdrop closes on click-drag-release → data loss). Adopting `Modal.tsx` fixes all at once.
+- MED: SearchResults search-as-you-type has no stale-response/abort guard.
+- MED: ShareModal `generated` one-way latch hides the form + has a dead "Generating…" branch.
+- LOW: ContextMenu no keyboard nav / Escape; Ctrl+A selects `files` not `filteredFiles`; `addQuickAccess` localStorage write unguarded (can throw in private mode).
 **Backend / perf**
 - `handlers/files.go` `List` does an extra `os.ReadDir` per directory entry (itemCount) — N+1 syscalls on large dirs.
 **Repo**
