@@ -112,8 +112,13 @@ func getIP(r *http.Request) string {
 			return xri
 		}
 		if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
-			parts := strings.Split(xff, ",") // left-most = original client
-			if c := strings.TrimSpace(parts[0]); c != "" {
+			// Take the RIGHT-most entry. A trusted proxy appends the peer it
+			// actually saw (nginx's $proxy_add_x_forwarded_for), so the
+			// right-most value is the real client and cannot be forged. The
+			// left-most is whatever the client chose to send, so trusting it
+			// would let an attacker rotate it to evade the limiter.
+			parts := strings.Split(xff, ",")
+			if c := strings.TrimSpace(parts[len(parts)-1]); c != "" {
 				return c
 			}
 		}
