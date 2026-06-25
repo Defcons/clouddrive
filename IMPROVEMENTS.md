@@ -154,9 +154,16 @@ Working branch: `loop/hardening`. **Never push `master`** — that auto-deploys 
 - **Tests:** `services/movepath_test.go` — permission move (folder + descendant migrate, old gone, sibling untouched), sibling-prefix not matched (`/a/b` vs `/a/bc`), tag move.
 - Resolves the Move half of the earlier "stale keys" item; the **Delete** half remains a design decision (see below).
 
-**Backend** (needs design input)
-- Delete doesn't prune metadata (a recreated path could inherit a stale ACL/tier/tags). Unlike Move, this interacts with trash-restore: should a restored folder regain its old ACL? Pruning on delete + re-applying on restore is the likely answer but is a deliberate design choice — flag for review.
+### Iter 24 — Prune metadata on permanent delete (stale-key story complete)
+- **Bug (correctness):** per-path metadata (permissions/tags/tier) was never dropped when a file was permanently removed, so a path of the same name created later could inherit a stale ACL/tier/tags. Resolved the design question the safe way: trashed items KEEP their metadata (Restore round-trips unchanged), and metadata is pruned only on PERMANENT removal — `PermanentDelete`, `EmptyTrash`, and the 30-day `CleanExpired`.
+- Added `PrunePath(path)` (exact + descendants, shared generic `prunePathKeys`) to the three stores, a `SetMetadataPruner` callback on `TrashStore`, wired in main.go to prune all three. Restore deliberately does NOT prune.
+- **Tests:** `services/movepath_test.go` — PrunePath removes path+descendants but not a sibling-prefix; permanent delete triggers the pruner with the original path.
+- Stale-key story now complete: Move/Rename migrate (iter 23), permanent delete prunes (iter 24), Restore preserves.
+
+## Open / found (remaining — low priority / needs design input)
+**Backend**
 - CSP `style-src 'unsafe-inline'` — the public share pages emit inline styles, so tightening needs those refactored first.
+- Copy doesn't duplicate metadata (a copy of a private folder is public) — arguably correct (a copy is a new object) but worth a deliberate decision; non-admins can only copy within their own home, so not a clear leak.
 **Backend**
 - LOW: stale keys in permissions/tags/backuptiers stores never pruned on Delete/Rename/Move; CSP `style-src 'unsafe-inline'` (share pages use inline styles — needs care).
 **Frontend** (verified, deferred)

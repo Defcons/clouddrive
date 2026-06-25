@@ -139,6 +139,18 @@ func (s *PermissionStore) MovePath(oldPath, newPath string) error {
 	return nil
 }
 
+// PrunePath drops the permission entry for path and any descendants — call when
+// a path is permanently deleted so a later path of the same name isn't silently
+// restricted by a stale entry.
+func (s *PermissionStore) PrunePath(path string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if prunePathKeys(s.permissions, path) {
+		return s.save()
+	}
+	return nil
+}
+
 // RemovePrivate removes the permission restriction on a folder
 func (s *PermissionStore) RemovePrivate(folderPath string) error {
 	s.mu.Lock()

@@ -38,6 +38,23 @@ func movePathKeys[V any](m map[string]V, oldPath, newPath string) bool {
 	return true
 }
 
+// prunePathKeys removes the entry for path and any descendant key. Returns true
+// if anything was removed. Used to drop per-path metadata when a file/folder is
+// permanently deleted, so a path recreated later doesn't inherit stale state.
+func prunePathKeys[V any](m map[string]V, path string) bool {
+	clean := toSlashClean(path)
+	var keys []string
+	for k := range m {
+		if k == clean || strings.HasPrefix(k, clean+"/") {
+			keys = append(keys, k)
+		}
+	}
+	for _, k := range keys {
+		delete(m, k)
+	}
+	return len(keys) > 0
+}
+
 // loadJSONFile reads path and unmarshals it into v. A missing file is a no-op
 // (fresh store). If the file exists but is corrupt, it is preserved as
 // <path>.corrupt and the error is logged, so the next save() doesn't silently
