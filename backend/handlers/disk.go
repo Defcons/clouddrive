@@ -6,7 +6,6 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"syscall"
 )
 
 type DiskHandler struct {
@@ -34,12 +33,8 @@ func NewDiskHandler(root string) *DiskHandler {
 func (h *DiskHandler) Usage(w http.ResponseWriter, r *http.Request) {
 	usage := DiskUsage{}
 
-	// Get filesystem total/free space
-	var stat syscall.Statfs_t
-	if err := syscall.Statfs(h.root, &stat); err == nil {
-		usage.TotalSpace = int64(stat.Blocks) * int64(stat.Bsize)
-		usage.FreeSpace = int64(stat.Bavail) * int64(stat.Bsize)
-	}
+	// Get filesystem total/free space (platform-specific; see disk_unix.go).
+	usage.TotalSpace, usage.FreeSpace = fsSpace(h.root)
 
 	// Calculate per-user sizes from top-level directories
 	userSizes := make(map[string]int64)
