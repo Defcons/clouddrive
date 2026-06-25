@@ -126,9 +126,15 @@ Working branch: `loop/hardening`. **Never push `master`** — that auto-deploys 
 - **Bug (LOW visual):** FileInfoPanel image preview had no `onError` → broken-image glyph on a failed/denied preview. Now falls back to the file-type icon.
 - Verified: `npm run build` clean.
 
+### Iter 20 — a11y + formatSize consistency
+- TagPicker color-swatch tag toggles now expose `aria-label` (tag name) + `aria-pressed` (selection state) — were color/title only.
+- TrashView and RecentFiles had their own copies of `formatSize` with the same PB-overflow fixed earlier in FileExplorer; clamped both.
+- Verified: `npm run build` clean.
+
 ## Open / found (remaining — low priority, deferred)
 **Frontend**
-- LOW: TrashView/RecentFiles hand-rolled modals lack focus trap; TagPicker tags color-only (no aria-pressed/label); ShareModal `generated` latch + dead "Generating…" branch; ContextMenu no arrow-key nav; Ctrl+A selects `files` not `filteredFiles`.
+- LOW: TrashView/RecentFiles hand-rolled modals lack focus trap; ShareModal `generated` latch (can't change expiry without reopening) + dead "Generating…" branch; ContextMenu no arrow-key nav; Ctrl+A selects `files` not `filteredFiles`.
+- NOTE: three `formatSize` copies (FileExplorer/TrashView/RecentFiles) — candidate for extraction to a shared util.
 **Backend**
 - LOW: stale keys in permissions/tags/backuptiers stores never pruned on Delete/Rename/Move; CSP `style-src 'unsafe-inline'` (share pages use inline styles — needs care).
 **Frontend** (verified, deferred)
