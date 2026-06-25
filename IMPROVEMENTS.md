@@ -135,6 +135,13 @@ Working branch: `loop/hardening`. **Never push `master`** — that auto-deploys 
 - Verified the whole branch end-to-end: backend `go test ./...` passes natively, Linux build/vet/test-compile clean, frontend `npm run build` clean. 60 test cases.
 - Ctrl+A now selects the visible `filteredFiles` (consistent with the header select-all checkbox), with `filteredFiles` added to the keydown effect deps to avoid a stale closure.
 
+### Iter 22 — Final-audit fixes (UpdateToast / AuditLogModal / useTheme)
+- **Bug (MED):** UpdateToast's in-flight `/api/version` fetch could `setVisible` after unmount. Added a cancelled-flag guard.
+- **Bug (MED):** AuditLogModal swallowed load errors (empty catch) → a fetch failure looked like an empty log to the admin. Added an error state ("Couldn't load…") + mounted guard + safer backdrop close.
+- **Bug (LOW crash):** useTheme read+wrote localStorage unguarded → could throw in private mode/disabled storage. Wrapped both in try/catch (falls back to OS theme; theme still applies in-session).
+- Audited SOLID (no change): UploadZone, FileFilter, useLongPress, BulkContextMenu (presentational / correct cleanup).
+- Verified: `npm run build` clean.
+
 ## Open / found (remaining — low priority / needs design input)
 **Frontend** (LOW)
 - TrashView/RecentFiles hand-rolled modals lack focus trap (would adopt `Modal.tsx`, but its fixed chrome changes layout — needs runtime check).
