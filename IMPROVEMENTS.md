@@ -102,11 +102,18 @@ Working branch: `loop/hardening`. **Never push `master`** — that auto-deploys 
 - **Bug (MED data loss):** ShareModal/SettingsModal/BatchRename closed on any backdrop `onClick`, so selecting text in an input and releasing on the backdrop discarded unsaved input. Switched to `onMouseDown` with a target check (mirrors `Modal.tsx`).
 - Verified: `npm run build` clean.
 
+### Iter 15 — Quick-access storage crash + ContextMenu Escape
+- **Bug (crash):** `addQuickAccess`/`removeQuickAccess` wrote to localStorage unguarded → in Safari private mode or at quota the throw propagated out of a click handler and could blank the app via ErrorBoundary. Wrapped writes in `writeQuickAccess` (try/catch; quick access is non-critical).
+- **a11y:** ContextMenu now closes on Escape (was outside-mousedown only).
+- Verified: `npm run build` clean.
+
 ## Open / found (remaining — lower priority)
 **Frontend** (verified, deferred)
 - MED: ShareModal/SettingsModal/BatchRename still hand-roll overlays without focus trap/restore/aria (full `Modal.tsx` adoption deferred — its fixed `max-w-md` chrome would change their layouts; needs runtime verification).
 - MED: ShareModal `generated` one-way latch hides the form + has a dead "Generating…" branch.
-- LOW: ContextMenu no keyboard nav / Escape; Ctrl+A selects `files` not `filteredFiles`; `addQuickAccess` localStorage write unguarded (can throw in private mode).
+- LOW: ContextMenu still lacks arrow-key nav; Ctrl+A selects `files` not `filteredFiles`.
+**Backend** (verified, deferred)
+- LOW: stale keys in permissions/tags/backuptiers stores never pruned on Delete/Rename/Move; CSP `style-src 'unsafe-inline'` (share pages use inline styles — needs care).
 **Backend / perf**
 - `handlers/files.go` `List` does an extra `os.ReadDir` per directory entry (itemCount) — N+1 syscalls on large dirs.
 **Repo**
