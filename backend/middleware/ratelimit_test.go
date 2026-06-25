@@ -11,7 +11,7 @@ func TestGetIP(t *testing.T) {
 	// getIP reads the package-level trustedProxies; set it for the test and
 	// restore afterwards.
 	orig := trustedProxies
-	trustedProxies = parseTrustedProxies("10.0.0.0/8")
+	trustedProxies = parseTrustedProxies("192.0.2.0/24")
 	t.Cleanup(func() { trustedProxies = orig })
 
 	newReq := func(remoteAddr string, headers map[string]string) *http.Request {
