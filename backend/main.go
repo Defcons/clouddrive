@@ -117,6 +117,7 @@ func main() {
 	auditHandler := handlers.NewAuditHandler(auditLog)
 	trashHandler := handlers.NewTrashHandler(trashStore, auditLog)
 	notifHandler := handlers.NewNotificationHandler(notifStore)
+	adminHandler := handlers.NewAdminHandler(userStore, auditLog)
 	tierHandler := handlers.NewBackupTierHandler(tierStore, permStore, auditLog)
 
 	mux := http.NewServeMux()
@@ -132,6 +133,7 @@ func main() {
 	registerTrashRoutes(mux, trashHandler, authMiddleware, protectedWrite)
 	registerShareRoutes(mux, shareHandler, authMiddleware, protectedWrite)
 	registerNotificationRoutes(mux, notifHandler, authMiddleware, protectedWrite)
+	registerAdminRoutes(mux, adminHandler, authMiddleware, protectedWrite)
 	registerMiscRoutes(mux, auditHandler, tierHandler, diskHandler, versionHandler, authMiddleware, protectedWrite)
 
 	staticFS, err := fs.Sub(staticFiles, "static")
@@ -275,6 +277,13 @@ func registerNotificationRoutes(mux *http.ServeMux, h *handlers.NotificationHand
 	mux.HandleFunc("GET /api/notifications", auth.Wrap(h.GetAll))
 	mux.HandleFunc("GET /api/notifications/unread", auth.Wrap(h.GetUnreadCount))
 	mux.HandleFunc("POST /api/notifications/read", protectedWrite(h.MarkRead))
+}
+
+func registerAdminRoutes(mux *http.ServeMux, h *handlers.AdminHandler, auth *middleware.AuthMiddleware, protectedWrite func(http.HandlerFunc) http.HandlerFunc) {
+	mux.HandleFunc("GET /api/admin/users", auth.Wrap(h.ListUsers))
+	mux.HandleFunc("POST /api/admin/users", protectedWrite(h.CreateUser))
+	mux.HandleFunc("POST /api/admin/users/update", protectedWrite(h.UpdateUser))
+	mux.HandleFunc("DELETE /api/admin/users", protectedWrite(h.DeleteUser))
 }
 
 func registerMiscRoutes(mux *http.ServeMux, audit *handlers.AuditHandler, tier *handlers.BackupTierHandler, disk *handlers.DiskHandler, version *handlers.VersionHandler, auth *middleware.AuthMiddleware, protectedWrite func(http.HandlerFunc) http.HandlerFunc) {

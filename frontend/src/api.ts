@@ -617,6 +617,66 @@ export async function getAuditLog(limit = 200): Promise<{ timestamp: string; act
   return res.json()
 }
 
+// ---- Admin: user management ----
+
+export type AdminUser = {
+  username: string
+  homeFolder: string
+  role: string
+  quota: number
+  mfaEnabled: boolean
+}
+
+export async function listUsers(): Promise<AdminUser[]> {
+  const res = await fetch(`${API_BASE}/admin/users`, FETCH_OPTS)
+  if (!res.ok) throw new Error('Failed to load users')
+  return res.json()
+}
+
+export async function createUser(u: {
+  username: string
+  password: string
+  homeFolder: string
+  role: string
+  quota: number
+}) {
+  const res = await fetch(`${API_BASE}/admin/users`, {
+    ...FETCH_OPTS,
+    method: 'POST',
+    headers: await writeHeaders(),
+    body: JSON.stringify(u),
+  })
+  if (!res.ok) throw new Error((await res.text()) || 'Failed to create user')
+  return res.json()
+}
+
+export async function updateUser(u: {
+  username: string
+  homeFolder: string
+  role: string
+  quota: number
+  newPassword?: string
+}) {
+  const res = await fetch(`${API_BASE}/admin/users/update`, {
+    ...FETCH_OPTS,
+    method: 'POST',
+    headers: await writeHeaders(),
+    body: JSON.stringify({ ...u, newPassword: u.newPassword || '' }),
+  })
+  if (!res.ok) throw new Error((await res.text()) || 'Failed to update user')
+  return res.json()
+}
+
+export async function deleteUser(username: string) {
+  const res = await fetch(`${API_BASE}/admin/users?username=${encodeURIComponent(username)}`, {
+    ...FETCH_OPTS,
+    method: 'DELETE',
+    headers: await writeHeadersNoContent(),
+  })
+  if (!res.ok) throw new Error((await res.text()) || 'Failed to delete user')
+  return res.json()
+}
+
 export async function getDiskUsage() {
   const res = await fetch(`${API_BASE}/disk`, FETCH_OPTS)
   if (!res.ok) throw new Error('Failed to get disk usage')
