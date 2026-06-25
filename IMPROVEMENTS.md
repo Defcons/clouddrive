@@ -107,7 +107,17 @@ Working branch: `loop/hardening`. **Never push `master`** — that auto-deploys 
 - **a11y:** ContextMenu now closes on Escape (was outside-mousedown only).
 - Verified: `npm run build` clean.
 
+### Iter 16 — /api/disk cross-user leak (fresh audit round 2)
+- **Bug (HIGH info-disclosure):** `GET /api/disk` returned the per-user breakdown (every user's folder name + byte size) and global totals to ANY authenticated user — no admin gate (unlike `audit.go`/`backuptiers.go`). Fixed: non-admins now see only their own home folder's usage; admins see all. Filesystem total/free is unchanged (not user-sensitive).
+- **Tests:** added to `handlers/authz_test.go` — non-admin sees only own usage, admin sees all.
+- Audited SOUND (no change): `/api/audit` (admin-gated), notifications handlers (recipient scoped to session username server-side — no cross-user read/mark), `/api/version` (no sensitive data).
+
 ## Open / found (remaining — lower priority)
+**Frontend** (verified — from audit round 2, fix next)
+- HIGH-ish: NotificationBell polls every 30s with no `.catch` (unhandled rejections) and keeps polling 401s after logout (global onAuthExpired only covers listFiles); setState-after-unmount.
+- MED: TrashView destructive actions (restore/delete/empty) swallow errors silently (`catch {}`) → no feedback on failure; RecentFiles load failure shows false "No recent files" empty state.
+- MED: LoginPage calls `onLogin()` inside the try, so a post-login throw shows "Invalid code" (misleading after the TOTP was already consumed).
+- LOW: FileInfoPanel image preview no onError fallback; TrashView/RecentFiles hand-rolled modals lack focus trap; TagPicker tags color-only (no aria-pressed/label).
 **Frontend** (verified, deferred)
 - MED: ShareModal/SettingsModal/BatchRename still hand-roll overlays without focus trap/restore/aria (full `Modal.tsx` adoption deferred — its fixed `max-w-md` chrome would change their layouts; needs runtime verification).
 - MED: ShareModal `generated` one-way latch hides the form + has a dead "Generating…" branch.
