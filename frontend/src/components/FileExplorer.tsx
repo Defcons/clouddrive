@@ -188,16 +188,22 @@ export default function FileExplorer({ initialPath, onLogout }: { initialPath: s
       })
     : sortedFiles
 
+  const refreshSeq = useRef(0)
   const refresh = useCallback(async () => {
+    // Guard against a slow response for a previous folder overwriting a newer
+    // one when the user navigates quickly: only the latest request may apply.
+    const seq = ++refreshSeq.current
     setLoading(true)
     setError('')
     try {
       const data = await listFiles(path)
+      if (seq !== refreshSeq.current) return
       setFiles(data)
     } catch (e: any) {
+      if (seq !== refreshSeq.current) return
       setError(e.message)
     } finally {
-      setLoading(false)
+      if (seq === refreshSeq.current) setLoading(false)
     }
   }, [path])
 

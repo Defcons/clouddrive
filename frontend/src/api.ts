@@ -13,6 +13,25 @@ export type CurrentUser = {
 
 let currentUser: CurrentUser | null = null
 
+// Registered by App so any API call that sees a 401 (expired/invalidated
+// session) can bounce the user back to the login screen instead of leaving
+// the app stuck behind a generic error.
+let onAuthExpired: (() => void) | null = null
+
+export function setOnAuthExpired(fn: (() => void) | null) {
+  onAuthExpired = fn
+}
+
+// checkAuthExpired clears local auth state and notifies App when a response
+// shows the session is no longer valid.
+function checkAuthExpired(res: Response) {
+  if (res.status === 401) {
+    currentUser = null
+    csrfToken = null
+    onAuthExpired?.()
+  }
+}
+
 export function getCurrentUser(): CurrentUser {
   return (
     currentUser ?? {
@@ -225,7 +244,10 @@ export async function changePassword(currentPassword: string, newPassword: strin
 
 export async function listFiles(path: string) {
   const res = await fetch(`${API_BASE}/files?path=${encodeURIComponent(path)}`, FETCH_OPTS)
-  if (!res.ok) throw new Error('Failed to list files')
+  if (!res.ok) {
+    checkAuthExpired(res)
+    throw new Error('Failed to list files')
+  }
   return res.json()
 }
 
