@@ -55,6 +55,19 @@ func prunePathKeys[V any](m map[string]V, path string) bool {
 	return len(keys) > 0
 }
 
+// saveJSONFile marshals v to path atomically (write temp + rename).
+func saveJSONFile(path string, v any) error {
+	data, err := json.MarshalIndent(v, "", "  ")
+	if err != nil {
+		return err
+	}
+	tmp := path + ".tmp"
+	if err := os.WriteFile(tmp, data, 0600); err != nil {
+		return err
+	}
+	return os.Rename(tmp, path)
+}
+
 // loadJSONFile reads path and unmarshals it into v. A missing file is a no-op
 // (fresh store). If the file exists but is corrupt, it is preserved as
 // <path>.corrupt and the error is logged, so the next save() doesn't silently

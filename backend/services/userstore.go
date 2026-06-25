@@ -6,10 +6,20 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"strings"
 	"sync"
 
 	"golang.org/x/crypto/bcrypt"
 )
+
+// AdminUserInfo is the admin-facing view of a user (no secrets).
+type AdminUserInfo struct {
+	Username   string `json:"username"`
+	HomeFolder string `json:"homeFolder"`
+	Role       string `json:"role"`
+	Quota      int64  `json:"quota"`
+	MfaEnabled bool   `json:"mfaEnabled"`
+}
 
 type UserStore struct {
 	configPath string
@@ -172,6 +182,18 @@ func (s *UserStore) saveLocked() error {
 	return os.Rename(tmpPath, s.configPath)
 }
 
+// GetQuota returns the user's storage quota in bytes (0 = unlimited / unknown).
+func (s *UserStore) GetQuota(username string) int64 {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	for _, u := range s.users {
+		if u.Username == username {
+			return u.Quota
+		}
+	}
+	return 0
+}
+
 func (s *UserStore) GetPwVersion(username string) int {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
@@ -181,6 +203,138 @@ func (s *UserStore) GetPwVersion(username string) int {
 		}
 	}
 	return 0
+}
+
+// ---- Admin user management ----
+
+func (s *UserStore) countAdminsLocked() int {
+	n := 0
+	for _, u := range s.users {
+		if u.Role == "admin" {
+			n++
+		}
+	}
+	return n
+}
+
+// ListUsers returns the admin-facing view of all users (no secrets).
+func (s *UserStore) ListUsers() []AdminUserInfo {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	out := make([]AdminUserInfo, 0, len(s.users))
+	for _, u := range s.users {
+		out = append(out, AdminUserInfo{
+			Username:   u.Username,
+			HomeFolder: u.HomeFolder,
+			Role:       u.Role,
+			Quota:      u.Quota,
+			MfaEnabled: u.MfaEnabled,
+		})
+	}
+	return out
+}
+
+// CreateUser adds a new user. Errors on duplicate, weak password, or bad role.
+func (s *UserStore) CreateUser(username, password, homeFolder, role string, quota int64) error {
+	username = strings.TrimSpace(username)
+	if username == "" {
+		return fmt.Errorf("username is required")
+	}
+	if len(password) < 8 {
+		return fmt.Errorf("password must be at least 8 characters")
+	}
+	if role != "admin" && role != "user" {
+		return fmt.Errorf("role must be 'admin' or 'user'")
+	}
+	if homeFolder == "" {
+		homeFolder = "/"
+	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for _, u := range s.users {
+		if u.Username == username {
+			return fmt.Errorf("user already exists")
+		}
+	}
+	hash, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
+	if err != nil {
+		return err
+	}
+	s.users = append(s.users, models.User{
+		Username:   username,
+		Password:   string(hash),
+		HomeFolder: homeFolder,
+		Role:       role,
+		Quota:      quota,
+	})
+	return s.saveLocked()
+}
+
+// UpdateUser changes a user's home folder, role, quota, and (optionally)
+// password. An empty newPassword leaves the password unchanged. Refuses to
+// demote the last admin. A password change bumps PwVersion (invalidating
+// existing sessions).
+func (s *UserStore) UpdateUser(username, homeFolder, role string, quota int64, newPassword string) error {
+	if role != "admin" && role != "user" {
+		return fmt.Errorf("role must be 'admin' or 'user'")
+	}
+	if newPassword != "" && len(newPassword) < 8 {
+		return fmt.Errorf("password must be at least 8 characters")
+	}
+	if homeFolder == "" {
+		homeFolder = "/"
+	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	idx := -1
+	for i, u := range s.users {
+		if u.Username == username {
+			idx = i
+			break
+		}
+	}
+	if idx == -1 {
+		return fmt.Errorf("user not found")
+	}
+	if s.users[idx].Role == "admin" && role != "admin" && s.countAdminsLocked() <= 1 {
+		return fmt.Errorf("cannot demote the last admin")
+	}
+
+	s.users[idx].HomeFolder = homeFolder
+	s.users[idx].Role = role
+	s.users[idx].Quota = quota
+	if newPassword != "" {
+		hash, err := bcrypt.GenerateFromPassword([]byte(newPassword), bcrypt.DefaultCost)
+		if err != nil {
+			return err
+		}
+		s.users[idx].Password = string(hash)
+		s.users[idx].PwVersion++
+	}
+	return s.saveLocked()
+}
+
+// DeleteUser removes a user. Refuses to delete the last admin.
+func (s *UserStore) DeleteUser(username string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	idx := -1
+	for i, u := range s.users {
+		if u.Username == username {
+			idx = i
+			break
+		}
+	}
+	if idx == -1 {
+		return fmt.Errorf("user not found")
+	}
+	if s.users[idx].Role == "admin" && s.countAdminsLocked() <= 1 {
+		return fmt.Errorf("cannot delete the last admin")
+	}
+	s.users = append(s.users[:idx], s.users[idx+1:]...)
+	return s.saveLocked()
 }
 
 // HashPassword is a utility for generating bcrypt hashes
