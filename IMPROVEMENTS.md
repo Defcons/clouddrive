@@ -149,8 +149,13 @@ Working branch: `loop/hardening`. **Never push `master`** — that auto-deploys 
 - ContextMenu no arrow-key nav.
 - `formatSize` differs intentionally (FileExplorer `—` for 0 vs `0 B` elsewhere) — NOT safe to extract to one util without a behavior decision.
 
+### Iter 23 — Migrate metadata on rename/move (private-folder-goes-public bug)
+- **Bug (HIGH correctness/security):** Rename/Move used `os.Rename` but never updated the permission/tag/backup-tier stores, so the entry was orphaned at the old path. A **renamed/moved private folder silently became public** (no entry at the new path → CanAccess open), and lost its tags/tier. Added `MovePath(old,new)` to all three stores (re-keys the path + descendants via a shared generic `movePathKeys`), and `FileHandler.migrateMetadata` called after successful Rename and per-item Move.
+- **Tests:** `services/movepath_test.go` — permission move (folder + descendant migrate, old gone, sibling untouched), sibling-prefix not matched (`/a/b` vs `/a/bc`), tag move.
+- Resolves the Move half of the earlier "stale keys" item; the **Delete** half remains a design decision (see below).
+
 **Backend** (needs design input)
-- Stale keys in permissions/tags/backuptiers stores aren't pruned on Delete/Rename/Move. Pruning interacts with trash-restore (should a restored folder regain its old ACL?) and Move should arguably *migrate* metadata, not drop it — a design decision, not a clean autonomous fix. Flag for review.
+- Delete doesn't prune metadata (a recreated path could inherit a stale ACL/tier/tags). Unlike Move, this interacts with trash-restore: should a restored folder regain its old ACL? Pruning on delete + re-applying on restore is the likely answer but is a deliberate design choice — flag for review.
 - CSP `style-src 'unsafe-inline'` — the public share pages emit inline styles, so tightening needs those refactored first.
 **Backend**
 - LOW: stale keys in permissions/tags/backuptiers stores never pruned on Delete/Rename/Move; CSP `style-src 'unsafe-inline'` (share pages use inline styles — needs care).
