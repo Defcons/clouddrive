@@ -89,6 +89,17 @@ func (s *TagStore) RemoveTag(path, tag string) error {
 	return s.save()
 }
 
+// MovePath migrates tags for path (and any descendants) to newPath so a
+// renamed/moved file keeps its tags.
+func (s *TagStore) MovePath(oldPath, newPath string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if movePathKeys(s.tags, oldPath, newPath) {
+		return s.save()
+	}
+	return nil
+}
+
 // GetAllTagged returns all paths that have any tags (for enriching file listings)
 func (s *TagStore) GetAllTagged() map[string][]string {
 	s.mu.RLock()
