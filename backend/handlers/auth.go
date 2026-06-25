@@ -92,6 +92,7 @@ func (h *AuthHandler) signSessionToken(user *models.User) (string, error) {
 		"role":       user.Role,
 		"homeFolder": user.HomeFolder,
 		"pwv":        user.PwVersion,
+		"kind":       "session",
 		"exp":        time.Now().Add(JWTLifetime).Unix(),
 		"iat":        time.Now().Unix(),
 	})
