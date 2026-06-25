@@ -44,10 +44,14 @@ Working branch: `loop/hardening`. **Never push `master`** — that auto-deploys 
 - **Bug (LOW):** notification id was 1-second granular (`<ts>_<user>`) → collisions within a second made `MarkRead` mark duplicates. Now includes a random suffix.
 - **Tests:** `services/notifications_test.go` — per-user cap, other users unaffected, newest survives trim, ids unique, persistence round-trip.
 
+### Iter 5 — Audit-log silent disable + login timing enumeration
+- **Bug (HIGH):** `auditlog.go` `NewAuditLogger` returned a no-op logger on `OpenFile` failure with no signal → audit could be silently disabled. Now logs `slog.Error` loudly at construction.
+- **Bug (HIGH):** `userstore.go` `Authenticate` skipped bcrypt for unknown usernames → response-time oracle for username enumeration. Now compares against a fixed dummy bcrypt hash (DefaultCost) on the no-match path. Also returns a snapshot copy of the user (clarity; avoids pointer-to-loop-var sharing).
+- **Tests:** `services/userstore_test.go` (correct/wrong/unknown + snapshot isolation) and `services/auditlog_test.go` (round-trip newest-first + degrades safely without panic).
+- Deferred (latent, not live): `Authenticate`/`GetUser` returned `User.BackupCodes` slice still aliases store backing array — handlers don't read it today; proper fix is a `PublicUser` return type (bigger change).
+
 ## Open / found (verified hypotheses from parallel audit 2026-06-25 — fix next, each needs repro+test)
 **Backend**
-- HIGH (audit log): `services/auditlog.go` if `OpenFile` fails, `Log` silently no-ops with no startup error → audit silently disabled. Make it log/fail-fast.
-- HIGH (login enum): `services/userstore.go` `Authenticate` skips bcrypt when user not found → timing oracle for username enumeration. Fix: compare against a dummy hash.
 - MED (rate limit): `middleware/ratelimit.go` keys on left-most XFF behind trusted proxy; if proxy appends (nginx default `$proxy_add_x_forwarded_for`) the client-supplied left-most value is trusted → limiter bypass. Prefer X-Real-IP / right-most hop.
 - MED (trash list race): admin branch of `List` returns the live backing slice; encoded after lock released while mutators reslice in place → data race. Return a copy.
 - LOW: notification ID 1-second granularity collision; tracked build artifact `frontend/tsconfig.tsbuildinfo` should be gitignored.
