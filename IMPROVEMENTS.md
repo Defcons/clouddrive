@@ -60,11 +60,17 @@ Working branch: `loop/hardening`. **Never push `master`** — that auto-deploys 
 - **Bug (MED, logic):** `useToast.addToast` scheduled auto-dismiss only `if (!action)`, so action toasts (Undo) ignored their 8s duration and lived forever. Now always auto-dismisses.
 - Verified: `npm run build` (tsc -b + vite) clean.
 
+### Iter 8 — Frontend filter/visual correctness
+- **Bug (visual):** with a filter active that matched nothing, the list rendered headers + zero rows and no message (empty check used `files`, body uses `filteredFiles`). Now shows a "No files match this filter" state distinct from the empty-folder state.
+- **Bug (mechanical):** the header select-all checkbox toggled/compared against `files` (all loaded) while the body shows `filteredFiles` — so it selected hidden rows and its checked state was wrong under a filter. Now operates on `filteredFiles` and shows an indeterminate state for partial selection.
+- **Bug (visual):** `formatSize` could index past the units array for ≥1 PB → "undefined". Added PB + clamped the index.
+- Verified: `npm run build` clean.
+
 ## Open / found (remaining — lower priority)
 **Frontend** (verified, deferred)
 - MED: PreviewModal lacks focus trap / aria-modal / focus restore; text preview no AbortController + unbounded `<pre>`.
 - MED: bulk delete/download overwrite each other's error banners; no per-item failure summary; bulk download fires N anchor clicks (popup-flood risk).
-- LOW: filtered-empty state not shown (empty check uses `files` not `filteredFiles`); select-all operates on `files` not `filteredFiles` + no indeterminate; `formatSize` PB-overflow; list-view `<img>` missing onError fallback; downloadFile revokes object URL synchronously.
+- LOW: list-view `<img>` missing onError fallback (grid has one); downloadFile revokes object URL synchronously; Ctrl+A selects `files` not `filteredFiles` (left as-is to avoid effect stale-closure risk).
 **Backend / perf**
 - `handlers/files.go` `List` does an extra `os.ReadDir` per directory entry (itemCount) — N+1 syscalls on large dirs.
 **Repo**
