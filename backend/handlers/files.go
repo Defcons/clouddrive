@@ -121,21 +121,26 @@ func pathWithinHome(filePath, homeFolder string) bool {
 	return cleanPath == cleanHome || strings.HasPrefix(cleanPath, cleanHome+"/")
 }
 
+// userCanAccess is the shared authorization gate used by every path-scoped
+// handler: non-admins are confined to their home folder, and the permission
+// store is consulted. permStore may be nil (then only the home check applies).
+// Keeping this in one place stops handlers from silently shipping without it —
+// the recurring "authenticated but not authorized" bug class.
+func userCanAccess(r *http.Request, permStore *services.PermissionStore, path string) bool {
+	role := middleware.GetRole(r)
+	if role != "admin" && !pathWithinHome(path, middleware.GetHomeFolder(r)) {
+		return false
+	}
+	if permStore == nil {
+		return true
+	}
+	return permStore.CanAccess(path, middleware.GetUsername(r), role)
+}
+
 // checkAccess verifies the user can access the given path.
 // Non-admin users are restricted to their home folder.
 func (h *FileHandler) checkAccess(r *http.Request, filePath string) bool {
-	username := middleware.GetUsername(r)
-	role := middleware.GetRole(r)
-
-	// Enforce home folder restriction for non-admin users
-	if role != "admin" && !pathWithinHome(filePath, middleware.GetHomeFolder(r)) {
-		return false
-	}
-
-	if h.permStore == nil {
-		return true
-	}
-	return h.permStore.CanAccess(filePath, username, role)
+	return userCanAccess(r, h.permStore, filePath)
 }
 
 func (h *FileHandler) List(w http.ResponseWriter, r *http.Request) {
