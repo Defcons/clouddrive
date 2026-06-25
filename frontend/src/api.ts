@@ -262,7 +262,9 @@ export async function downloadFile(path: string) {
   document.body.appendChild(a)
   a.click()
   document.body.removeChild(a)
-  URL.revokeObjectURL(url)
+  // Defer revoke so the browser has started the download before the object
+  // URL is freed (revoking synchronously can abort large downloads).
+  setTimeout(() => URL.revokeObjectURL(url), 1000)
 }
 
 export async function uploadFiles(

@@ -1,5 +1,6 @@
 node_modules/
 frontend/dist/
+frontend/tsconfig.tsbuildinfo
 backend/static/*
 !backend/static/.gitkeep
 *.exe
