@@ -21,13 +21,16 @@ const ACTION_COLORS: Record<string, string> = {
 export default function AuditLogModal({ onClose }: Props) {
   const [entries, setEntries] = useState<{ timestamp: string; action: string; username: string; ip: string; detail: string }[]>([])
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState(false)
   const [filter, setFilter] = useState('')
 
   useEffect(() => {
+    let mounted = true
     getAuditLog(500)
-      .then(setEntries)
-      .catch(() => {})
-      .finally(() => setLoading(false))
+      .then((e) => { if (mounted) setEntries(e) })
+      .catch(() => { if (mounted) setError(true) })
+      .finally(() => { if (mounted) setLoading(false) })
+    return () => { mounted = false }
   }, [])
 
   useEffect(() => {
@@ -47,7 +50,7 @@ export default function AuditLogModal({ onClose }: Props) {
     : entries
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={onClose}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onMouseDown={(e) => { if (e.target === e.currentTarget) onClose() }}>
       <div
         className="bg-white dark:bg-gray-800 rounded-xl shadow-2xl w-full max-w-4xl mx-4 max-h-[85vh] flex flex-col overflow-hidden"
         onClick={(e) => e.stopPropagation()}
@@ -81,6 +84,8 @@ export default function AuditLogModal({ onClose }: Props) {
         <div className="flex-1 overflow-y-auto">
           {loading ? (
             <div className="text-gray-400 text-center py-12">Loading...</div>
+          ) : error ? (
+            <div className="text-gray-400 text-center py-12">Couldn’t load the audit log. Try again.</div>
           ) : filtered.length === 0 ? (
             <div className="text-gray-400 text-center py-12">No audit entries</div>
           ) : (

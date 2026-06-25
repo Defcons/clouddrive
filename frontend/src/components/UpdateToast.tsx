@@ -5,11 +5,13 @@ export default function UpdateToast() {
   const startTimeRef = useRef<number | null>(null)
 
   useEffect(() => {
+    let cancelled = false
     const poll = async () => {
       try {
         const res = await fetch('/api/version')
         if (!res.ok) return
         const data = await res.json()
+        if (cancelled) return // unmounted while the request was in flight
 
         if (startTimeRef.current === null) {
           startTimeRef.current = data.startTime
@@ -24,7 +26,7 @@ export default function UpdateToast() {
 
     poll()
     const interval = setInterval(poll, 30000)
-    return () => clearInterval(interval)
+    return () => { cancelled = true; clearInterval(interval) }
   }, [])
 
   useEffect(() => {

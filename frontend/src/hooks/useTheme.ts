@@ -8,8 +8,12 @@ const STORAGE_KEY = 'clouddrive_theme'
 const SYSTEM = 'system'
 
 function readStored(): Theme | 'system' {
-  const stored = localStorage.getItem(STORAGE_KEY)
-  if (stored === 'dark' || stored === 'light') return stored
+  try {
+    const stored = localStorage.getItem(STORAGE_KEY)
+    if (stored === 'dark' || stored === 'light') return stored
+  } catch {
+    // localStorage unavailable (private mode / disabled) — follow the OS.
+  }
   return SYSTEM
 }
 
@@ -42,7 +46,11 @@ export function useTheme() {
   const toggle = () => {
     setTheme((t) => {
       const next: Theme = t === 'dark' ? 'light' : 'dark'
-      localStorage.setItem(STORAGE_KEY, next)
+      try {
+        localStorage.setItem(STORAGE_KEY, next)
+      } catch {
+        // Non-fatal: theme still applies for this session.
+      }
       return next
     })
   }
