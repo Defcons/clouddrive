@@ -15,11 +15,11 @@ export function useToast() {
   const addToast = useCallback((message: string, type: Toast['type'] = 'info', action?: Toast['action'], duration = 4000) => {
     const id = ++toastId
     setToasts((prev) => [...prev, { id, message, type, action }])
-    if (!action) {
-      setTimeout(() => {
-        setToasts((prev) => prev.filter((t) => t.id !== id))
-      }, duration)
-    }
+    // Auto-dismiss every toast after its duration — including ones with an
+    // action (e.g. Undo), which otherwise lived forever and piled up.
+    setTimeout(() => {
+      setToasts((prev) => prev.filter((t) => t.id !== id))
+    }, duration)
     return id
   }, [])
 

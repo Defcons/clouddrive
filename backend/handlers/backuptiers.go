@@ -9,12 +9,13 @@ import (
 )
 
 type BackupTierHandler struct {
-	store *services.BackupTierStore
-	audit *services.AuditLogger
+	store     *services.BackupTierStore
+	permStore *services.PermissionStore
+	audit     *services.AuditLogger
 }
 
-func NewBackupTierHandler(store *services.BackupTierStore, audit *services.AuditLogger) *BackupTierHandler {
-	return &BackupTierHandler{store: store, audit: audit}
+func NewBackupTierHandler(store *services.BackupTierStore, permStore *services.PermissionStore, audit *services.AuditLogger) *BackupTierHandler {
+	return &BackupTierHandler{store: store, permStore: permStore, audit: audit}
 }
 
 // Get the tier for a path (with inheritance from parents)
@@ -22,6 +23,11 @@ func (h *BackupTierHandler) Get(w http.ResponseWriter, r *http.Request) {
 	path := r.URL.Query().Get("path")
 	if path == "" {
 		http.Error(w, "path required", http.StatusBadRequest)
+		return
+	}
+
+	if !userCanAccess(r, h.permStore, path) {
+		http.Error(w, "Access denied", http.StatusForbidden)
 		return
 	}
 
@@ -54,6 +60,11 @@ func (h *BackupTierHandler) Set(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if !userCanAccess(r, h.permStore, req.Path) {
+		http.Error(w, "Access denied", http.StatusForbidden)
+		return
+	}
+
 	if err := h.store.SetTier(req.Path, req.Tier); err != nil {
 		http.Error(w, "Failed to save", http.StatusInternalServerError)
 		return
@@ -73,8 +84,13 @@ func (h *BackupTierHandler) Set(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(map[string]interface{}{"path": req.Path, "tier": req.Tier})
 }
 
-// List all tier entries (for showing admin overview)
+// List all tier entries (admin overview). Restricted to admins — the full map
+// would otherwise leak the paths of every tiered folder to any user.
 func (h *BackupTierHandler) List(w http.ResponseWriter, r *http.Request) {
+	if middleware.GetRole(r) != "admin" {
+		http.Error(w, "Access denied", http.StatusForbidden)
+		return
+	}
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(h.store.All())
 }

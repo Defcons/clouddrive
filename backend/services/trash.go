@@ -1,10 +1,13 @@
 package services
 
 import (
+	"crypto/rand"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 )
@@ -25,6 +28,21 @@ type TrashStore struct {
 	trashDir string
 	manifest []TrashItem
 	mu       sync.Mutex
+	// pruneMetadata, if set, is called with a permanently-removed item's
+	// original path so per-path metadata (permissions/tags/tier) can be dropped.
+	pruneMetadata func(originalPath string)
+}
+
+// SetMetadataPruner registers a callback invoked when an item is permanently
+// removed (permanent delete, empty trash, or expiry).
+func (s *TrashStore) SetMetadataPruner(fn func(originalPath string)) {
+	s.pruneMetadata = fn
+}
+
+func (s *TrashStore) prune(originalPath string) {
+	if s.pruneMetadata != nil {
+		s.pruneMetadata(originalPath)
+	}
 }
 
 func NewTrashStore(storageRoot string) *TrashStore {
@@ -41,11 +59,7 @@ func NewTrashStore(storageRoot string) *TrashStore {
 }
 
 func (s *TrashStore) load() {
-	data, err := os.ReadFile(filepath.Join(s.trashDir, "manifest.json"))
-	if err != nil {
-		return
-	}
-	json.Unmarshal(data, &s.manifest)
+	loadJSONFile(filepath.Join(s.trashDir, "manifest.json"), &s.manifest)
 }
 
 func (s *TrashStore) save() error {
@@ -70,7 +84,10 @@ func (s *TrashStore) MoveToTrash(absPath, originalPath, username string) error {
 		return err
 	}
 
-	id := fmt.Sprintf("%d_%s", time.Now().UnixMilli(), filepath.Base(originalPath))
+	// A random suffix guarantees a unique id/trashPath even when two same-named
+	// files are deleted within the same millisecond (otherwise the second move
+	// would clobber the first's trashed bytes).
+	id := fmt.Sprintf("%d_%s_%s", time.Now().UnixMilli(), randHex(4), filepath.Base(originalPath))
 	trashPath := filepath.Join(s.trashDir, id)
 
 	if err := os.Rename(absPath, trashPath); err != nil {
@@ -109,7 +126,11 @@ func (s *TrashStore) List(username, role string) []TrashItem {
 	defer s.mu.Unlock()
 
 	if role == "admin" {
-		return s.manifest
+		// Return a copy: the caller (handler) JSON-encodes after our lock is
+		// released, and a concurrent mutator reslices s.manifest in place.
+		out := make([]TrashItem, len(s.manifest))
+		copy(out, s.manifest)
+		return out
 	}
 
 	var items []TrashItem
@@ -132,11 +153,22 @@ func (s *TrashStore) Restore(id, username, role string) error {
 				return fmt.Errorf("permission denied")
 			}
 
-			// Ensure parent directory exists
-			parentDir := filepath.Dir(filepath.Join(s.root, item.OriginalPath))
-			os.MkdirAll(parentDir, 0755)
+			// Re-validate the destination stays within the storage root. The
+			// delete path validated OriginalPath, but the manifest is the only
+			// input here and could be corrupt/hand-edited — don't restore out
+			// of the root.
+			destPath, err := s.resolveRestoreDest(item.OriginalPath)
+			if err != nil {
+				return err
+			}
 
-			destPath := filepath.Join(s.root, item.OriginalPath)
+			if err := os.MkdirAll(filepath.Dir(destPath), 0755); err != nil {
+				return fmt.Errorf("failed to create restore directory: %w", err)
+			}
+
+			// Never silently overwrite a file created at the original location
+			// since the delete — restore alongside it under a unique name.
+			destPath = uniqueDest(destPath)
 			if err := os.Rename(item.TrashPath, destPath); err != nil {
 				return fmt.Errorf("failed to restore: %w", err)
 			}
@@ -161,6 +193,7 @@ func (s *TrashStore) PermanentDelete(id, username, role string) error {
 
 			os.RemoveAll(item.TrashPath)
 			s.manifest = append(s.manifest[:i], s.manifest[i+1:]...)
+			s.prune(item.OriginalPath)
 			return s.save()
 		}
 	}
@@ -176,6 +209,7 @@ func (s *TrashStore) EmptyTrash(username, role string) error {
 	for _, item := range s.manifest {
 		if role == "admin" || item.DeletedBy == username {
 			os.RemoveAll(item.TrashPath)
+			s.prune(item.OriginalPath)
 		} else {
 			remaining = append(remaining, item)
 		}
@@ -188,6 +222,57 @@ func (s *TrashStore) EmptyTrash(username, role string) error {
 	return s.save()
 }
 
+// randHex returns n random bytes as a hex string, or a zero fallback if the
+// system RNG fails (the timestamp prefix still keeps ids mostly unique).
+func randHex(n int) string {
+	b := make([]byte, n)
+	if _, err := rand.Read(b); err != nil {
+		return strings.Repeat("0", n*2)
+	}
+	return hex.EncodeToString(b)
+}
+
+// resolveRestoreDest returns the absolute restore destination for originalPath,
+// rejecting any path that escapes the storage root.
+func (s *TrashStore) resolveRestoreDest(originalPath string) (string, error) {
+	dest := filepath.Join(s.root, filepath.Clean(originalPath))
+	abs, err := filepath.Abs(dest)
+	if err != nil {
+		return "", fmt.Errorf("invalid restore path")
+	}
+	rootAbs, err := filepath.Abs(s.root)
+	if err != nil {
+		return "", fmt.Errorf("invalid root")
+	}
+	if abs != rootAbs && !strings.HasPrefix(abs+string(filepath.Separator), rootAbs+string(filepath.Separator)) {
+		return "", fmt.Errorf("restore path escapes storage root")
+	}
+	return abs, nil
+}
+
+// uniqueDest returns dest unchanged if nothing exists there, otherwise inserts
+// " (restored)" (with a counter if needed) before the extension so a restore
+// never overwrites a file created since the delete.
+func uniqueDest(dest string) string {
+	if _, err := os.Stat(dest); os.IsNotExist(err) {
+		return dest
+	}
+	dir := filepath.Dir(dest)
+	base := filepath.Base(dest)
+	ext := filepath.Ext(base)
+	stem := strings.TrimSuffix(base, ext)
+	for i := 0; ; i++ {
+		suffix := " (restored)"
+		if i > 0 {
+			suffix = fmt.Sprintf(" (restored %d)", i+1)
+		}
+		candidate := filepath.Join(dir, stem+suffix+ext)
+		if _, err := os.Stat(candidate); os.IsNotExist(err) {
+			return candidate
+		}
+	}
+}
+
 // CleanExpired removes items older than 30 days
 func (s *TrashStore) CleanExpired() {
 	s.mu.Lock()
@@ -198,6 +283,7 @@ func (s *TrashStore) CleanExpired() {
 	for _, item := range s.manifest {
 		if item.DeletedAt < cutoff {
 			os.RemoveAll(item.TrashPath)
+			s.prune(item.OriginalPath)
 		} else {
 			remaining = append(remaining, item)
 		}

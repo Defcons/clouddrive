@@ -35,8 +35,15 @@ export default function ContextMenu({ x, y, onPreview, onShare, onSafeShare, onD
         onClose()
       }
     }
+    const keyHandler = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose()
+    }
     document.addEventListener('mousedown', handler)
-    return () => document.removeEventListener('mousedown', handler)
+    document.addEventListener('keydown', keyHandler)
+    return () => {
+      document.removeEventListener('mousedown', handler)
+      document.removeEventListener('keydown', keyHandler)
+    }
   }, [onClose])
 
   // Adjust position so menu doesn't overflow viewport

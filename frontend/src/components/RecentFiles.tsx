@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { getRecentFiles } from '../api'
 import type { FileItem } from '../types'
 import FileIcon from './FileIcon'
+import { useDialog } from '../hooks/useDialog'
 
 interface Props {
   onNavigate: (path: string) => void
@@ -17,31 +18,30 @@ function formatDate(ms: number): string {
 
 function formatSize(bytes: number): string {
   if (bytes === 0) return '0 B'
-  const units = ['B', 'KB', 'MB', 'GB', 'TB']
-  const i = Math.floor(Math.log(bytes) / Math.log(1024))
+  const units = ['B', 'KB', 'MB', 'GB', 'TB', 'PB']
+  const i = Math.min(Math.floor(Math.log(bytes) / Math.log(1024)), units.length - 1)
   return `${(bytes / Math.pow(1024, i)).toFixed(i > 0 ? 1 : 0)} ${units[i]}`
 }
 
 export default function RecentFiles({ onNavigate, onClose }: Props) {
   const [files, setFiles] = useState<FileItem[]>([])
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState(false)
 
   useEffect(() => {
+    let mounted = true
     getRecentFiles()
-      .then(setFiles)
-      .catch(() => {})
-      .finally(() => setLoading(false))
+      .then((f) => { if (mounted) setFiles(f) })
+      .catch(() => { if (mounted) setError(true) })
+      .finally(() => { if (mounted) setLoading(false) })
+    return () => { mounted = false }
   }, [])
 
-  useEffect(() => {
-    const handler = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
-    document.addEventListener('keydown', handler)
-    return () => document.removeEventListener('keydown', handler)
-  }, [onClose])
+  const dialogRef = useDialog<HTMLDivElement>(onClose)
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={onClose}>
-      <div className="bg-white dark:bg-gray-800 rounded-xl shadow-2xl w-full max-w-2xl mx-4 max-h-[80vh] flex flex-col overflow-hidden" onClick={(e) => e.stopPropagation()}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onMouseDown={(e) => { if (e.target === e.currentTarget) onClose() }}>
+      <div ref={dialogRef} role="dialog" aria-modal="true" tabIndex={-1} className="bg-white dark:bg-gray-800 rounded-xl shadow-2xl w-full max-w-2xl mx-4 max-h-[80vh] flex flex-col overflow-hidden focus:outline-none" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between px-5 py-4 border-b border-gray-200 dark:border-gray-700 flex-shrink-0">
           <h2 className="text-base font-semibold text-gray-800 dark:text-gray-200">Recent Files</h2>
           <button onClick={onClose} className="p-1 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition">
@@ -53,6 +53,8 @@ export default function RecentFiles({ onNavigate, onClose }: Props) {
         <div className="flex-1 overflow-y-auto">
           {loading ? (
             <div className="text-gray-400 text-center py-12">Loading...</div>
+          ) : error ? (
+            <div className="text-gray-400 text-center py-12">Couldn’t load recent files. Try again.</div>
           ) : files.length === 0 ? (
             <div className="text-gray-400 text-center py-12">No recent files</div>
           ) : (

@@ -32,8 +32,10 @@ import { confirm as confirmModal, prompt as promptModal } from './ConfirmModal'
 
 function formatSize(bytes: number): string {
   if (bytes === 0) return '—'
-  const units = ['B', 'KB', 'MB', 'GB', 'TB']
-  const i = Math.floor(Math.log(bytes) / Math.log(1024))
+  const units = ['B', 'KB', 'MB', 'GB', 'TB', 'PB']
+  // Clamp the index so absurdly large sizes don't index past the array
+  // (which would render "undefined").
+  const i = Math.min(Math.floor(Math.log(bytes) / Math.log(1024)), units.length - 1)
   return `${(bytes / Math.pow(1024, i)).toFixed(i > 0 ? 1 : 0)} ${units[i]}`
 }
 
@@ -188,16 +190,22 @@ export default function FileExplorer({ initialPath, onLogout }: { initialPath: s
       })
     : sortedFiles
 
+  const refreshSeq = useRef(0)
   const refresh = useCallback(async () => {
+    // Guard against a slow response for a previous folder overwriting a newer
+    // one when the user navigates quickly: only the latest request may apply.
+    const seq = ++refreshSeq.current
     setLoading(true)
     setError('')
     try {
       const data = await listFiles(path)
+      if (seq !== refreshSeq.current) return
       setFiles(data)
     } catch (e: any) {
+      if (seq !== refreshSeq.current) return
       setError(e.message)
     } finally {
-      setLoading(false)
+      if (seq === refreshSeq.current) setLoading(false)
     }
   }, [path])
 
@@ -259,7 +267,7 @@ export default function FileExplorer({ initialPath, onLogout }: { initialPath: s
 
       if (isInput && !mod) return
 
-      if (mod && e.key === 'a') { e.preventDefault(); setSelectedFiles(new Set(files.map((f) => f.path))); return }
+      if (mod && e.key === 'a') { e.preventDefault(); setSelectedFiles(new Set(filteredFiles.map((f) => f.path))); return }
       if (mod && e.key === 'c' && !isInput && selectedFiles.size > 0) { setClipboard({ paths: Array.from(selectedFiles), mode: 'copy' }); return }
       if (mod && e.key === 'x' && !isInput && selectedFiles.size > 0) { setClipboard({ paths: Array.from(selectedFiles), mode: 'cut' }); return }
       if (mod && e.key === 'v' && !isInput) { handlePaste(); return }
@@ -302,7 +310,7 @@ export default function FileExplorer({ initialPath, onLogout }: { initialPath: s
     }
     window.addEventListener('keydown', handler)
     return () => window.removeEventListener('keydown', handler)
-  }, [previewFile, shareFile, showChangelog, showSettings, showTrash, showRecent, showAuditLog, contextMenu, renaming, selectedFiles, clipboard, files, path])
+  }, [previewFile, shareFile, showChangelog, showSettings, showTrash, showRecent, showAuditLog, contextMenu, renaming, selectedFiles, clipboard, files, filteredFiles, path])
 
   const handleUpload = async (fileList: FileList) => {
     setUploadProgress(0)
@@ -610,17 +618,27 @@ export default function FileExplorer({ initialPath, onLogout }: { initialPath: s
     return filteredFiles.filter((f) => selectedFiles.has(f.path))
   }
 
+  // summarizeFailures builds a short "name1, name2, …" tail for a toast.
+  const summarizeFailures = (names: string[]): string =>
+    names.slice(0, 3).join(', ') + (names.length > 3 ? `, +${names.length - 3} more` : '')
+
   const handleBulkDownload = async () => {
     setContextMenu(null)
     const selected = getSelectedFileObjects()
+    const failed: string[] = []
     for (const file of selected) {
       try {
         await downloadFile(file.path)
       } catch {
-        setError(`Failed to download ${file.name}`)
+        failed.push(file.name)
       }
     }
     setSelectedFiles(new Set())
+    if (failed.length === 0) {
+      toast.success(`Downloaded ${selected.length} item${selected.length !== 1 ? 's' : ''}`)
+    } else {
+      toast.error(`Failed to download ${failed.length} of ${selected.length}: ${summarizeFailures(failed)}`)
+    }
   }
 
   const handleBulkDelete = async () => {
@@ -633,16 +651,23 @@ export default function FileExplorer({ initialPath, onLogout }: { initialPath: s
       confirmLabel: 'Move to trash',
     })
     if (!ok) return
+    const failed: string[] = []
     for (const file of selected) {
       try {
         await deleteFile(file.path)
       } catch {
-        setError(`Failed to delete ${file.name}`)
+        failed.push(file.name)
       }
     }
     setSelectedFiles(new Set())
     await refresh()
     window.dispatchEvent(new Event('sidebar-refresh'))
+    const okCount = selected.length - failed.length
+    if (failed.length === 0) {
+      toast.success(`Moved ${okCount} item${okCount !== 1 ? 's' : ''} to trash`)
+    } else {
+      toast.error(`Deleted ${okCount} of ${selected.length}; failed: ${summarizeFailures(failed)}`)
+    }
   }
 
   // Clear selection when path changes
@@ -850,13 +875,22 @@ export default function FileExplorer({ initialPath, onLogout }: { initialPath: s
           )}
           {loading ? (
             <LoadingSkeleton />
-          ) : files.length === 0 ? (
+          ) : filteredFiles.length === 0 ? (
             <div className="text-gray-400 text-center py-12">
               <svg className="w-16 h-16 mx-auto mb-3 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
               </svg>
-              <p>This folder is empty</p>
-              <p className="text-sm mt-1">Drop files here or click Upload</p>
+              {files.length === 0 ? (
+                <>
+                  <p>This folder is empty</p>
+                  <p className="text-sm mt-1">Drop files here or click Upload</p>
+                </>
+              ) : (
+                <>
+                  <p>No files match this filter</p>
+                  <p className="text-sm mt-1">Clear the filter to see all {files.length} item(s)</p>
+                </>
+              )}
             </div>
           ) : viewMode === 'list' ? (
             <table className="w-full" style={{ tableLayout: 'fixed' }}>
@@ -872,16 +906,20 @@ export default function FileExplorer({ initialPath, onLogout }: { initialPath: s
                   <th
                     className="pb-2 text-center cursor-pointer"
                     onClick={() => {
-                      if (selectedFiles.size === files.length) {
+                      // Operate on the visible (filtered) rows, not the full set.
+                      if (selectedFiles.size === filteredFiles.length) {
                         setSelectedFiles(new Set())
                       } else {
-                        setSelectedFiles(new Set(files.map((f) => f.path)))
+                        setSelectedFiles(new Set(filteredFiles.map((f) => f.path)))
                       }
                     }}
                   >
                     <input
                       type="checkbox"
-                      checked={selectedFiles.size > 0 && selectedFiles.size === files.length}
+                      ref={(el) => {
+                        if (el) el.indeterminate = selectedFiles.size > 0 && selectedFiles.size < filteredFiles.length
+                      }}
+                      checked={filteredFiles.length > 0 && selectedFiles.size === filteredFiles.length}
                       onChange={() => {}}
                       className="w-3.5 h-3.5 rounded border-gray-300 text-blue-600 focus:ring-blue-500 cursor-pointer pointer-events-none"
                     />
@@ -968,12 +1006,16 @@ export default function FileExplorer({ initialPath, onLogout }: { initialPath: s
                       <div className="flex items-center gap-2.5">
                         <div className="relative flex-shrink-0">
                           {!file.isDir && /\.(jpg|jpeg|png|gif|webp|svg|bmp)$/i.test(file.name) ? (
-                            <img
-                              src={getPreviewUrl(file.path)}
-                              alt=""
-                              className="w-5 h-5 rounded object-cover"
-                              loading="lazy"
-                            />
+                            <>
+                              <img
+                                src={getPreviewUrl(file.path)}
+                                alt=""
+                                className="w-5 h-5 rounded object-cover"
+                                loading="lazy"
+                                onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; (e.target as HTMLImageElement).nextElementSibling?.classList.remove('hidden') }}
+                              />
+                              <span className="hidden"><FileIcon name={file.name} isDir={file.isDir} /></span>
+                            </>
                           ) : (
                             <FileIcon name={file.name} isDir={file.isDir} />
                           )}

@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { checkAuth, getCurrentUser } from './api'
+import { checkAuth, getCurrentUser, setOnAuthExpired } from './api'
 import LoginPage from './components/LoginPage'
 import FileExplorer from './components/FileExplorer'
 import ErrorBoundary from './components/ErrorBoundary'
@@ -10,6 +10,13 @@ export default function App() {
 
   useEffect(() => {
     checkAuth().then(setAuthenticated)
+  }, [])
+
+  // When any API call hits a 401 (session expired/invalidated server-side),
+  // drop back to the login screen instead of stranding the user.
+  useEffect(() => {
+    setOnAuthExpired(() => setAuthenticated(false))
+    return () => setOnAuthExpired(null)
   }, [])
 
   if (authenticated === null) {

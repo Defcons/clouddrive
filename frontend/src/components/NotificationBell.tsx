@@ -24,15 +24,23 @@ export default function NotificationBell({ onNavigate }: Props) {
   const ref = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
-    getUnreadCount().then(setUnreadCount)
-    const interval = setInterval(() => getUnreadCount().then(setUnreadCount), 30000)
-    return () => clearInterval(interval)
+    let mounted = true
+    const tick = () =>
+      getUnreadCount()
+        .then((c) => { if (mounted) setUnreadCount(c) })
+        .catch(() => {}) // network blip — next tick reconciles
+    tick()
+    const interval = setInterval(tick, 30000)
+    return () => { mounted = false; clearInterval(interval) }
   }, [])
 
   useEffect(() => {
-    if (open) {
-      getNotifications().then(setNotifications)
-    }
+    if (!open) return
+    let mounted = true
+    getNotifications()
+      .then((n) => { if (mounted) setNotifications(n) })
+      .catch(() => {})
+    return () => { mounted = false }
   }, [open])
 
   useEffect(() => {
@@ -44,9 +52,13 @@ export default function NotificationBell({ onNavigate }: Props) {
   }, [])
 
   const handleMarkAllRead = async () => {
-    await markNotificationsRead()
-    setUnreadCount(0)
-    setNotifications((prev) => prev.map((n) => ({ ...n, read: true })))
+    try {
+      await markNotificationsRead()
+      setUnreadCount(0)
+      setNotifications((prev) => prev.map((n) => ({ ...n, read: true })))
+    } catch {
+      // Leave the count as-is; the next poll reconciles it.
+    }
   }
 
   return (

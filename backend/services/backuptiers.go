@@ -26,11 +26,7 @@ func NewBackupTierStore(storageRoot string) *BackupTierStore {
 }
 
 func (s *BackupTierStore) load() {
-	data, err := os.ReadFile(s.filePath)
-	if err != nil {
-		return
-	}
-	json.Unmarshal(data, &s.tiers)
+	loadJSONFile(s.filePath, &s.tiers)
 }
 
 func (s *BackupTierStore) save() error {
@@ -85,6 +81,27 @@ func (s *BackupTierStore) SetTier(path string, tier int) error {
 		s.tiers[path] = tier
 	}
 	return s.save()
+}
+
+// MovePath migrates the backup tier for path (and any descendants) to newPath
+// so a renamed/moved folder keeps its tier.
+func (s *BackupTierStore) MovePath(oldPath, newPath string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if movePathKeys(s.tiers, oldPath, newPath) {
+		return s.save()
+	}
+	return nil
+}
+
+// PrunePath drops the backup tier for path and any descendants (permanent delete).
+func (s *BackupTierStore) PrunePath(path string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if prunePathKeys(s.tiers, path) {
+		return s.save()
+	}
+	return nil
 }
 
 // All returns a copy of the tiers map

@@ -30,6 +30,8 @@ export default function TagPicker({ currentTags, onSave, onClose }: Props) {
           <button
             key={tag}
             onClick={() => toggle(tag)}
+            aria-label={tag}
+            aria-pressed={selected.has(tag)}
             className={`w-6 h-6 rounded-full border-2 transition ${TAG_COLORS[tag]} ${
               selected.has(tag) ? 'border-white dark:border-gray-200 ring-2 ring-blue-500' : 'border-transparent'
             }`}
