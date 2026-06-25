@@ -226,6 +226,7 @@ func registerFileRoutes(mux *http.ServeMux, h *handlers.FileHandler, auth *middl
 	mux.HandleFunc("GET /api/files", auth.Wrap(h.List))
 	mux.HandleFunc("GET /api/files/download", auth.Wrap(h.Download))
 	mux.HandleFunc("GET /api/files/preview", auth.Wrap(h.Preview))
+	mux.HandleFunc("GET /api/files/thumbnail", auth.Wrap(h.Thumbnail))
 	mux.HandleFunc("GET /api/files/search", auth.Wrap(h.Search))
 	mux.HandleFunc("GET /api/files/recent", auth.Wrap(h.Recent))
 	mux.HandleFunc("GET /api/files/tags", auth.Wrap(h.GetTags))

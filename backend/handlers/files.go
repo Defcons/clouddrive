@@ -19,6 +19,7 @@ import (
 
 type FileHandler struct {
 	root       string
+	thumbDir   string
 	permStore  *services.PermissionStore
 	audit      *services.AuditLogger
 	trash      *services.TrashStore
@@ -49,7 +50,15 @@ func getCreationTime(info os.FileInfo) int64 {
 }
 
 func NewFileHandler(root string, permStore *services.PermissionStore, audit *services.AuditLogger, trash *services.TrashStore, tags *services.TagStore, tierStore *services.BackupTierStore) *FileHandler {
-	return &FileHandler{root: root, permStore: permStore, audit: audit, trash: trash, tags: tags, tierStore: tierStore}
+	return &FileHandler{
+		root:      root,
+		thumbDir:  filepath.Join(root, ".thumbs"),
+		permStore: permStore,
+		audit:     audit,
+		trash:     trash,
+		tags:      tags,
+		tierStore: tierStore,
+	}
 }
 
 // getClientIP extracts the client IP, preferring the left-most

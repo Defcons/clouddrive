@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import type { FileItem as FileItemType, ViewMode, Clipboard, TAG_COLORS } from '../types'
-import { listFiles, downloadFile, uploadFiles, createFolder, renameFile, deleteFile, logout, isPreviewable, addQuickAccess, setFolderPrivate, removeFolderPrivate, moveFiles, copyFiles, extractZip, compressFiles, setFileTags, getDiskUsage, getPreviewUrl, setBackupTier } from '../api'
+import { listFiles, downloadFile, uploadFiles, createFolder, renameFile, deleteFile, logout, isPreviewable, addQuickAccess, setFolderPrivate, removeFolderPrivate, moveFiles, copyFiles, extractZip, compressFiles, setFileTags, getDiskUsage, getThumbnailUrl, setBackupTier } from '../api'
 import Breadcrumb from './Breadcrumb'
 import Toolbar from './Toolbar'
 import FileIcon from './FileIcon'
@@ -1008,7 +1008,7 @@ export default function FileExplorer({ initialPath, onLogout }: { initialPath: s
                           {!file.isDir && /\.(jpg|jpeg|png|gif|webp|svg|bmp)$/i.test(file.name) ? (
                             <>
                               <img
-                                src={getPreviewUrl(file.path)}
+                                src={getThumbnailUrl(file.path)}
                                 alt=""
                                 className="w-5 h-5 rounded object-cover"
                                 loading="lazy"
@@ -1094,7 +1094,7 @@ export default function FileExplorer({ initialPath, onLogout }: { initialPath: s
                       </svg>
                     ) : /\.(jpg|jpeg|png|gif|webp|svg|bmp)$/i.test(file.name) ? (
                       <img
-                        src={getPreviewUrl(file.path)}
+                        src={getThumbnailUrl(file.path)}
                         alt={file.name}
                         className="w-full h-full object-cover"
                         loading="lazy"

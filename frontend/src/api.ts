@@ -335,6 +335,12 @@ export function getPreviewUrl(path: string): string {
   return `${API_BASE}/files/preview?path=${encodeURIComponent(path)}`
 }
 
+// Small cached thumbnail for image tiles/rows (full preview is used in the
+// modal). Falls back to the original for types the server can't downscale.
+export function getThumbnailUrl(path: string): string {
+  return `${API_BASE}/files/thumbnail?path=${encodeURIComponent(path)}`
+}
+
 const PREVIEWABLE_EXTENSIONS = new Set([
   'jpg', 'jpeg', 'png', 'gif', 'webp', 'svg', 'bmp', 'ico',
   'pdf',
