@@ -15,9 +15,15 @@ Goal: implement features #1–#9 from the recommendations, each polished + teste
 6. **Per-user storage quotas** — enforce caps on upload. — ✅ DONE
 7. **File versioning** — keep previous copy on overwrite. — ✅ DONE
 8. **Active-session management** — list + revoke signed-in devices. — ✅ DONE
-9. **Full-text / content search** — search inside text/PDF. — TODO
+9. **Full-text / content search** — search inside text files. — ✅ DONE
 
 ## Done
+### #9 — Content / full-text search
+- `Search` gains an opt-in `&content=1` pass: after filename matches, it scans text files (~25 known extensions, ≤512 KB each, home-scoped, permission-checked, symlink/dot-skipped, 100-result cap) for the query and appends matches with a one-line `Snippet` (deduped against filename hits). Dependency-free.
+- Frontend: a "Search inside file contents" checkbox in the search dropdown (default off to keep instant search fast) + snippet shown under content matches.
+- Tests: `handlers/search_test.go` — content match found, binary-ext ignored, filename-only excludes content, dedupe.
+- NOTE: text only; PDF/Office content indexing needs a parser dependency (follow-up).
+
 ### #8 — Active session management
 - `SessionStore` (persisted `.sessions.json`): Create→id, IsValid, Touch (in-mem last-seen), List, Revoke (owner/admin), RevokeAllForUser, PruneExpired (startup). Session tokens now carry a `jti`; `AuthMiddleware.SetSessionValidator` (optional — nil keeps tests/old behavior) rejects revoked/missing jti and records activity. Login/Challenge create a session; Logout revokes the current one (parses the cookie token directly, since logout isn't auth-wrapped); password change revokes all.
 - Endpoints: `GET /api/auth/sessions` (own, current flagged), `POST /api/auth/sessions/revoke`. Frontend: "Active sessions" section in Settings — device/OS label, IP, last-seen, "this device" badge, sign-out per session.

@@ -65,6 +65,41 @@ type FileInfo struct {
 	IsPrivate  bool     `json:"isPrivate,omitempty"`
 	Tags       []string `json:"tags,omitempty"`
 	BackupTier int      `json:"backupTier,omitempty"`
+	Snippet    string   `json:"snippet,omitempty"` // content-search match context
+}
+
+// contentSearchExts are the text file types whose contents we scan.
+var contentSearchExts = map[string]bool{
+	".txt": true, ".md": true, ".json": true, ".yml": true, ".yaml": true,
+	".xml": true, ".csv": true, ".log": true, ".js": true, ".ts": true,
+	".jsx": true, ".tsx": true, ".css": true, ".html": true, ".go": true,
+	".py": true, ".sh": true, ".bat": true, ".ini": true, ".conf": true,
+	".toml": true, ".env": true, ".sql": true, ".rs": true, ".java": true,
+}
+
+const maxContentScanBytes = 512 * 1024
+
+// contentSnippet returns a one-line excerpt around idx (a byte offset into s).
+func contentSnippet(s string, idx, qlen int) string {
+	if idx < 0 || idx > len(s) {
+		return ""
+	}
+	start := idx - 30
+	if start < 0 {
+		start = 0
+	}
+	end := idx + qlen + 40
+	if end > len(s) {
+		end = len(s)
+	}
+	sn := strings.TrimSpace(strings.NewReplacer("\n", " ", "\r", " ", "\t", " ").Replace(s[start:end]))
+	if start > 0 {
+		sn = "…" + sn
+	}
+	if end < len(s) {
+		sn = sn + "…"
+	}
+	return sn
 }
 
 // getCreationTime tries to get the file creation/change time, falls back to ModTime.
@@ -700,6 +735,65 @@ func (h *FileHandler) Search(w http.ResponseWriter, r *http.Request) {
 		}
 		return nil
 	})
+
+	// Optional content search: scan text files for the query and append
+	// matches (with a snippet) that aren't already in the filename results.
+	if r.URL.Query().Get("content") == "1" {
+		seen := make(map[string]bool, len(results))
+		for _, fi := range results {
+			seen[fi.Path] = true
+		}
+		_ = filepath.Walk(searchRoot, func(path string, info os.FileInfo, err error) error {
+			if err != nil || info == nil || len(results) >= 100 {
+				return nil
+			}
+			if info.Mode()&os.ModeSymlink != 0 {
+				if info.IsDir() {
+					return filepath.SkipDir
+				}
+				return nil
+			}
+			if strings.HasPrefix(info.Name(), ".") {
+				if info.IsDir() {
+					return filepath.SkipDir
+				}
+				return nil
+			}
+			if info.IsDir() || info.Size() == 0 || info.Size() > maxContentScanBytes {
+				return nil
+			}
+			if !contentSearchExts[strings.ToLower(filepath.Ext(info.Name()))] {
+				return nil
+			}
+			relPath, _ := filepath.Rel(h.root, path)
+			entryPath := "/" + filepath.ToSlash(relPath)
+			if seen[entryPath] {
+				return nil
+			}
+			if h.permStore != nil && !h.permStore.CanAccess(entryPath, username, role) {
+				return nil
+			}
+			data, rerr := os.ReadFile(path)
+			if rerr != nil {
+				return nil
+			}
+			idx := strings.Index(strings.ToLower(string(data)), query)
+			if idx < 0 {
+				return nil
+			}
+			results = append(results, FileInfo{
+				Name:      info.Name(),
+				Path:      entryPath,
+				IsDir:     false,
+				Size:      info.Size(),
+				CreatedAt: getCreationTime(info),
+				ModTime:   info.ModTime().UnixMilli(),
+				Snippet:   contentSnippet(string(data), idx, len(query)),
+			})
+			seen[entryPath] = true
+			return nil
+		})
+	}
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(results)
