@@ -27,6 +27,13 @@ type FileHandler struct {
 	tierStore  *services.BackupTierStore
 	// quotaOf returns a user's storage quota in bytes (0 = unlimited). Optional.
 	quotaOf func(username string) int64
+	// versions, if set, snapshots files before they're overwritten on upload.
+	versions *services.VersionStore
+}
+
+// SetVersionStore enables keeping previous copies of files on overwrite.
+func (h *FileHandler) SetVersionStore(v *services.VersionStore) {
+	h.versions = v
 }
 
 // SetQuotaLookup wires a per-user quota source (e.g. the user store). When set,
@@ -471,6 +478,15 @@ func (h *FileHandler) Upload(w http.ResponseWriter, r *http.Request) {
 			continue // refuse dotfiles — would clobber app state (.permissions.json, etc.)
 		}
 		dstPath := filepath.Join(absDir, name)
+		// If we're about to overwrite an existing file, snapshot it first.
+		if h.versions != nil {
+			if _, statErr := os.Stat(dstPath); statErr == nil {
+				webPath := filepath.ToSlash(filepath.Join(targetDir, name))
+				if verr := h.versions.SaveVersion(dstPath, webPath); verr != nil {
+					slog.Warn("failed to snapshot version before overwrite", "path", webPath, "err", verr)
+				}
+			}
+		}
 		dst, err := os.Create(dstPath)
 		if err != nil {
 			src.Close()

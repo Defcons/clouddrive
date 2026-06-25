@@ -9,6 +9,7 @@ import BulkContextMenu from './BulkContextMenu'
 import UploadZone from './UploadZone'
 import PreviewModal from './PreviewModal'
 import ShareModal from './ShareModal'
+import VersionsModal from './VersionsModal'
 import Sidebar from './Sidebar'
 import UpdateToast from './UpdateToast'
 import ChangelogModal from './ChangelogModal'
@@ -88,6 +89,7 @@ export default function FileExplorer({ initialPath, onLogout }: { initialPath: s
   const [renameValue, setRenameValue] = useState('')
   const [previewFile, setPreviewFile] = useState<FileItemType | null>(null)
   const [shareFile, setShareFile] = useState<FileItemType | null>(null)
+  const [versionsFile, setVersionsFile] = useState<FileItemType | null>(null)
   const [shareSafe, setShareSafe] = useState(false)
   const [showChangelog, setShowChangelog] = useState(false)
   const [showSettings, setShowSettings] = useState(false)
@@ -257,7 +259,7 @@ export default function FileExplorer({ initialPath, onLogout }: { initialPath: s
       const mod = e.ctrlKey || e.metaKey
 
       if (e.key === 'Escape') {
-        if (previewFile || shareFile || showChangelog || showSettings || showTrash || showRecent || showAuditLog) return
+        if (previewFile || shareFile || versionsFile || showChangelog || showSettings || showTrash || showRecent || showAuditLog) return
         if (contextMenu) { setContextMenu(null); return }
         if (clipboard) { setClipboard(null); return }
         if (renaming) { setRenaming(null); return }
@@ -310,7 +312,7 @@ export default function FileExplorer({ initialPath, onLogout }: { initialPath: s
     }
     window.addEventListener('keydown', handler)
     return () => window.removeEventListener('keydown', handler)
-  }, [previewFile, shareFile, showChangelog, showSettings, showTrash, showRecent, showAuditLog, contextMenu, renaming, selectedFiles, clipboard, files, filteredFiles, path])
+  }, [previewFile, shareFile, versionsFile, showChangelog, showSettings, showTrash, showRecent, showAuditLog, contextMenu, renaming, selectedFiles, clipboard, files, filteredFiles, path])
 
   const handleUpload = async (fileList: FileList) => {
     setUploadProgress(0)
@@ -1227,6 +1229,7 @@ export default function FileExplorer({ initialPath, onLogout }: { initialPath: s
           onMakePrivate={() => handleMakePrivate(contextMenu.file)}
           onMakePublic={() => handleMakePublic(contextMenu.file)}
           onToggleOffsite={() => handleToggleOffsite(contextMenu.file)}
+          onVersions={() => { setVersionsFile(contextMenu.file); setContextMenu(null) }}
           offsiteBackup={contextMenu.file.backupTier === 2}
           isPrivate={contextMenu.file.isPrivate}
           onClose={() => setContextMenu(null)}
@@ -1239,6 +1242,10 @@ export default function FileExplorer({ initialPath, onLogout }: { initialPath: s
 
       {shareFile && (
         <ShareModal file={shareFile} safe={shareSafe} onClose={() => setShareFile(null)} />
+      )}
+
+      {versionsFile && (
+        <VersionsModal path={versionsFile.path} onClose={() => setVersionsFile(null)} onRestored={() => refresh()} />
       )}
 
       {showChangelog && (

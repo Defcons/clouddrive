@@ -617,6 +617,31 @@ export async function getAuditLog(limit = 200): Promise<{ timestamp: string; act
   return res.json()
 }
 
+// ---- File versions ----
+
+export type FileVersion = { id: string; size: number; savedAt: number }
+
+export async function listVersions(path: string): Promise<FileVersion[]> {
+  const res = await fetch(`${API_BASE}/files/versions?path=${encodeURIComponent(path)}`, FETCH_OPTS)
+  if (!res.ok) throw new Error('Failed to load versions')
+  return res.json()
+}
+
+export function getVersionDownloadUrl(path: string, id: string): string {
+  return `${API_BASE}/files/versions/download?path=${encodeURIComponent(path)}&id=${encodeURIComponent(id)}`
+}
+
+export async function restoreVersion(path: string, id: string) {
+  const res = await fetch(`${API_BASE}/files/versions/restore`, {
+    ...FETCH_OPTS,
+    method: 'POST',
+    headers: await writeHeaders(),
+    body: JSON.stringify({ path, id }),
+  })
+  if (!res.ok) throw new Error((await res.text()) || 'Failed to restore version')
+  return res.json()
+}
+
 // ---- Admin: user management ----
 
 export type AdminUser = {
