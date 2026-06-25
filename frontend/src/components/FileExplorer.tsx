@@ -32,8 +32,10 @@ import { confirm as confirmModal, prompt as promptModal } from './ConfirmModal'
 
 function formatSize(bytes: number): string {
   if (bytes === 0) return '—'
-  const units = ['B', 'KB', 'MB', 'GB', 'TB']
-  const i = Math.floor(Math.log(bytes) / Math.log(1024))
+  const units = ['B', 'KB', 'MB', 'GB', 'TB', 'PB']
+  // Clamp the index so absurdly large sizes don't index past the array
+  // (which would render "undefined").
+  const i = Math.min(Math.floor(Math.log(bytes) / Math.log(1024)), units.length - 1)
   return `${(bytes / Math.pow(1024, i)).toFixed(i > 0 ? 1 : 0)} ${units[i]}`
 }
 
@@ -856,13 +858,22 @@ export default function FileExplorer({ initialPath, onLogout }: { initialPath: s
           )}
           {loading ? (
             <LoadingSkeleton />
-          ) : files.length === 0 ? (
+          ) : filteredFiles.length === 0 ? (
             <div className="text-gray-400 text-center py-12">
               <svg className="w-16 h-16 mx-auto mb-3 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
               </svg>
-              <p>This folder is empty</p>
-              <p className="text-sm mt-1">Drop files here or click Upload</p>
+              {files.length === 0 ? (
+                <>
+                  <p>This folder is empty</p>
+                  <p className="text-sm mt-1">Drop files here or click Upload</p>
+                </>
+              ) : (
+                <>
+                  <p>No files match this filter</p>
+                  <p className="text-sm mt-1">Clear the filter to see all {files.length} item(s)</p>
+                </>
+              )}
             </div>
           ) : viewMode === 'list' ? (
             <table className="w-full" style={{ tableLayout: 'fixed' }}>
@@ -878,16 +889,20 @@ export default function FileExplorer({ initialPath, onLogout }: { initialPath: s
                   <th
                     className="pb-2 text-center cursor-pointer"
                     onClick={() => {
-                      if (selectedFiles.size === files.length) {
+                      // Operate on the visible (filtered) rows, not the full set.
+                      if (selectedFiles.size === filteredFiles.length) {
                         setSelectedFiles(new Set())
                       } else {
-                        setSelectedFiles(new Set(files.map((f) => f.path)))
+                        setSelectedFiles(new Set(filteredFiles.map((f) => f.path)))
                       }
                     }}
                   >
                     <input
                       type="checkbox"
-                      checked={selectedFiles.size > 0 && selectedFiles.size === files.length}
+                      ref={(el) => {
+                        if (el) el.indeterminate = selectedFiles.size > 0 && selectedFiles.size < filteredFiles.length
+                      }}
+                      checked={filteredFiles.length > 0 && selectedFiles.size === filteredFiles.length}
                       onChange={() => {}}
                       className="w-3.5 h-3.5 rounded border-gray-300 text-blue-600 focus:ring-blue-500 cursor-pointer pointer-events-none"
                     />
