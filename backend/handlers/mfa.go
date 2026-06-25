@@ -234,7 +234,7 @@ func (h *MfaHandler) Challenge(auth *AuthHandler) http.HandlerFunc {
 			h.issueTrustedDeviceCookie(w, username, user.PwVersion)
 		}
 
-		if err := auth.issueSession(w, user); err != nil {
+		if err := auth.issueSession(w, r, user); err != nil {
 			http.Error(w, "Failed to create session", http.StatusInternalServerError)
 			return
 		}
