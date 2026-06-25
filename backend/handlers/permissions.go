@@ -110,6 +110,14 @@ func (h *PermissionsHandler) GetPermission(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
+	// Don't leak the owner/ACL of a path the caller can't access; report it as
+	// non-private (same non-disclosure pattern as GetTags).
+	if !userCanAccess(r, h.permStore, path) {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]interface{}{"isPrivate": false, "path": path})
+		return
+	}
+
 	perm := h.permStore.GetPermission(path)
 	if perm == nil {
 		w.Header().Set("Content-Type", "application/json")
