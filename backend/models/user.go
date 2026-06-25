@@ -9,6 +9,9 @@ type User struct {
 	Role       string `json:"role"`
 	PwVersion  int    `json:"pwVersion"`
 
+	// Quota is the maximum bytes this user's home folder may hold. 0 = unlimited.
+	Quota int64 `json:"quota,omitempty"`
+
 	// MFA (TOTP). MfaSecret is the base32-encoded shared secret; MfaEnabled
 	// gates whether login requires a TOTP code. BackupCodes are bcrypt hashes
 	// of one-time recovery codes, consumed on use.

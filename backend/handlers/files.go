@@ -25,6 +25,26 @@ type FileHandler struct {
 	trash      *services.TrashStore
 	tags       *services.TagStore
 	tierStore  *services.BackupTierStore
+	// quotaOf returns a user's storage quota in bytes (0 = unlimited). Optional.
+	quotaOf func(username string) int64
+}
+
+// SetQuotaLookup wires a per-user quota source (e.g. the user store). When set,
+// uploads are rejected if they would push the user's home folder over quota.
+func (h *FileHandler) SetQuotaLookup(fn func(username string) int64) {
+	h.quotaOf = fn
+}
+
+// dirSize returns the total bytes of regular files under path.
+func dirSize(path string) int64 {
+	var total int64
+	_ = filepath.Walk(path, func(_ string, info os.FileInfo, err error) error {
+		if err == nil && info != nil && !info.IsDir() {
+			total += info.Size()
+		}
+		return nil
+	})
+	return total
 }
 
 type FileInfo struct {
@@ -415,6 +435,27 @@ func (h *FileHandler) Upload(w http.ResponseWriter, r *http.Request) {
 	if len(files) == 0 {
 		http.Error(w, "No files provided", http.StatusBadRequest)
 		return
+	}
+
+	// Enforce the user's storage quota (if configured). Only quota'd users pay
+	// the cost of measuring their home folder.
+	if h.quotaOf != nil {
+		if quota := h.quotaOf(middleware.GetUsername(r)); quota > 0 {
+			var incoming int64
+			for _, fh := range files {
+				incoming += fh.Size
+			}
+			home := middleware.GetHomeFolder(r)
+			if home == "" {
+				home = "/"
+			}
+			if homeAbs, err := h.safePath(home); err == nil {
+				if dirSize(homeAbs)+incoming > quota {
+					http.Error(w, "Storage quota exceeded", http.StatusInsufficientStorage)
+					return
+				}
+			}
+		}
 	}
 
 	uploaded := make([]string, 0, len(files))
