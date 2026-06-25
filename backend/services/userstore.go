@@ -172,6 +172,18 @@ func (s *UserStore) saveLocked() error {
 	return os.Rename(tmpPath, s.configPath)
 }
 
+// GetQuota returns the user's storage quota in bytes (0 = unlimited / unknown).
+func (s *UserStore) GetQuota(username string) int64 {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	for _, u := range s.users {
+		if u.Username == username {
+			return u.Quota
+		}
+	}
+	return 0
+}
+
 func (s *UserStore) GetPwVersion(username string) int {
 	s.mu.RLock()
 	defer s.mu.RUnlock()

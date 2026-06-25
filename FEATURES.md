@@ -12,12 +12,17 @@ Goal: implement features #1–#9 from the recommendations, each polished + teste
 3. **Chunked/resumable uploads** — large uploads survive drops. — TODO
 4. **Admin user-management UI** — add/remove users, roles, home folders. — TODO
 5. **WebDAV endpoint** — mount as a native drive (needs `x/net/webdav`). — TODO (dep check)
-6. **Per-user storage quotas** — enforce caps on upload. — TODO
+6. **Per-user storage quotas** — enforce caps on upload. — ✅ DONE
 7. **File versioning** — keep previous copy on overwrite. — TODO
 8. **Active-session management** — list + revoke signed-in devices. — TODO
 9. **Full-text / content search** — search inside text/PDF. — TODO
 
 ## Done
+### #6 — Per-user storage quotas
+- Added `Quota int64` (bytes, 0=unlimited) to the User model + `UserStore.GetQuota`. `FileHandler.SetQuotaLookup` injects it (no constructor change); `Upload` rejects with 507 if `dirSize(home)+incoming > quota`. Only quota'd users pay the home-folder measurement cost. Caller's quota is also surfaced in `/api/disk`.
+- Tests: `handlers/quota_test.go` — over-quota upload rejected (file not written), within-quota allowed, unset quota unlimited.
+- NOTE: enforced on authenticated uploads; collaborate-share anonymous uploads don't yet check the owner's quota (documented follow-up).
+
 ### #1 — Thumbnail endpoint + cache
 - `GET /api/files/thumbnail?path=` (auth-wrapped): decodes jpg/png/gif (stdlib), downscales to ≤256px longest side with a pure-Go area-averaging scaler, encodes JPEG q82, caches to `<root>/.thumbs/<sha256(path|size|mtime|dim)>.jpg`. Edited files regenerate (key includes size+mtime). Types stdlib can't decode (webp/svg/bmp) or that fail to decode fall back to streaming the original via ServeContent — no regression. `.thumbs` is a dotdir, excluded from listing/search/recent/disk.
 - Frontend: `getThumbnailUrl()`; FileExplorer list+grid image tiles now load thumbnails instead of full originals (preview modal still uses full-res). The existing onError → FileIcon fallback covers any failure.
