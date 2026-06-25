@@ -54,9 +54,21 @@ Working branch: `loop/hardening`. **Never push `master`** — that auto-deploys 
 - **Bug (MED):** behind a trusted proxy with no `X-Real-IP`, `getIP` used the LEFT-most `X-Forwarded-For` entry, which is client-controlled when the proxy appends (`$proxy_add_x_forwarded_for`) → an attacker rotates it to evade the login limiter. Now uses the right-most entry (the hop the trusted proxy actually observed; unforgeable). `X-Real-IP` is still preferred first; untrusted-peer path still ignores headers.
 - **Tests:** `middleware/ratelimit_test.go` — getIP table (spoof ignored / X-Real-IP preferred / right-most XFF / peer fallback) + lockout-and-reset.
 
-## Open / found (remaining — fix next)
-**Backend**
-- LOW: tracked build artifact `frontend/tsconfig.tsbuildinfo` should be gitignored (also `frontend/package-lock.json` LF noise — pre-existing).
+### Iter 7 — Frontend robustness: session expiry, stale-race, toast dismiss
+- **Bug (HIGH):** an expired/invalidated session (401) left the app a dead error-banner husk — no return to login. Added `setOnAuthExpired` hook in `api.ts`; `listFiles` (the navigation/refresh heartbeat) calls `checkAuthExpired` on 401, clearing local auth state and bouncing to `LoginPage` via App's registered handler.
+- **Bug (HIGH):** `FileExplorer.refresh` had no stale-response guard — a slow listing for folder A could overwrite folder B after fast navigation. Added a monotonic `refreshSeq` ref; only the latest request applies its result.
+- **Bug (MED, logic):** `useToast.addToast` scheduled auto-dismiss only `if (!action)`, so action toasts (Undo) ignored their 8s duration and lived forever. Now always auto-dismisses.
+- Verified: `npm run build` (tsc -b + vite) clean.
+
+## Open / found (remaining — lower priority)
+**Frontend** (verified, deferred)
+- MED: PreviewModal lacks focus trap / aria-modal / focus restore; text preview no AbortController + unbounded `<pre>`.
+- MED: bulk delete/download overwrite each other's error banners; no per-item failure summary; bulk download fires N anchor clicks (popup-flood risk).
+- LOW: filtered-empty state not shown (empty check uses `files` not `filteredFiles`); select-all operates on `files` not `filteredFiles` + no indeterminate; `formatSize` PB-overflow; list-view `<img>` missing onError fallback; downloadFile revokes object URL synchronously.
+**Backend / perf**
+- `handlers/files.go` `List` does an extra `os.ReadDir` per directory entry (itemCount) — N+1 syscalls on large dirs.
+**Repo**
+- LOW: `frontend/tsconfig.tsbuildinfo` tracked in git (build artifact) — candidate for gitignore.
 
 **Frontend**
 - HIGH: session expiry (401) never redirects to login — app becomes a dead error-banner husk (`api.ts` + `FileExplorer.refresh`). Add 401 → onLogout.
