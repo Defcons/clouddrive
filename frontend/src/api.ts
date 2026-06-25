@@ -480,8 +480,9 @@ export function removeQuickAccess(path: string) {
 // Return types kept loose here — concrete shapes live in types.ts and are
 // imported by the components that consume these functions.
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-export async function searchFiles(query: string): Promise<any[]> {
-  const res = await fetch(`${API_BASE}/files/search?q=${encodeURIComponent(query)}`, FETCH_OPTS)
+export async function searchFiles(query: string, content = false): Promise<any[]> {
+  const url = `${API_BASE}/files/search?q=${encodeURIComponent(query)}${content ? '&content=1' : ''}`
+  const res = await fetch(url, FETCH_OPTS)
   if (!res.ok) throw new Error('Search failed')
   return res.json()
 }
