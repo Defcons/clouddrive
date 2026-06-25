@@ -11,13 +11,19 @@ Goal: implement features #1–#9 from the recommendations, each polished + teste
 2. **HTTP Range support** for download/preview — video seek + resumable. — ✅ DONE
 3. **Chunked/resumable uploads** — large uploads survive drops. — ✅ DONE
 4. **Admin user-management UI** — add/remove users, roles, home folders. — ✅ DONE
-5. **WebDAV endpoint** — mount as a native drive (needs `x/net/webdav`). — TODO (dep check)
+5. **WebDAV endpoint** — mount as a native drive. — ✅ DONE
 6. **Per-user storage quotas** — enforce caps on upload. — ✅ DONE
 7. **File versioning** — keep previous copy on overwrite. — ✅ DONE
 8. **Active-session management** — list + revoke signed-in devices. — ✅ DONE
 9. **Full-text / content search** — search inside text files. — ✅ DONE
 
 ## Done
+### #5 — WebDAV endpoint
+- `WebDAVHandler` (via `golang.org/x/net/webdav`) at `/webdav` — HTTP Basic Auth against the user store, scoped per-user to the home folder (`webdav.Dir`, admins get root), shared in-memory lock system. Mountable as a native drive on Windows/macOS/Linux/iOS.
+- **Opt-in via `WEBDAV_ENABLED=1`** (off by default) because Basic Auth is password-only — it does NOT enforce MFA; serve over HTTPS only. Added the dep at go-1.22-compatible versions (x/net v0.21.0) so the `golang:1.22` Docker build is unaffected.
+- Tests: `handlers/webdav_test.go` — 401 without/with bad creds (+ WWW-Authenticate), PUT lands inside the user's home and can't escape the scope.
+- NOTE (documented): WebDAV bypasses MFA (protocol limitation — app-passwords would be the proper follow-up); admin sessions see app dotdirs (.versions/.trash/etc.) under root.
+
 ### #3 — Chunked / resumable uploads
 - Backend: `POST /api/files/upload/chunk` stores parts under `.uploads/<id>/<index>.part` (temp+rename per chunk, 64 MB/chunk cap, ownership claimed via `.owner` file so a guessed id can't be hijacked); `GET .../status` lists received indices (resume); `POST .../complete` verifies all parts, enforces quota on the assembled size, snapshots a version on overwrite, assembles temp+rename, cleans up. All access-checked; uploadId regex-validated (no traversal).
 - Frontend: `uploadFileChunked` (8 MB chunks, 3 retries/chunk, progress, 401→login). `handleUpload` routes files >8 MB through it, small files stay on the batched single POST.
