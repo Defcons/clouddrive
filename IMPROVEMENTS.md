@@ -166,9 +166,19 @@ Working branch: `loop/hardening`. **Never push `master`** — that auto-deploys 
 - **Decision (CSP style-src):** left `style-src 'unsafe-inline'` as-is. The share pages style with inline `<style>`/`style=""`; externalizing all of it is a large, low-value refactor (style injection is far less dangerous than script, and all interpolated values are `html.EscapeString`'d). Documented rather than chased.
 - **Decision (Copy metadata):** left Copy NOT inheriting permissions/tags/tier. Traced it — not a leak: non-admins can only copy within their own home (checkAccess gates source+dest), and a copy is reasonably a fresh public object. Changing it would be a behavior surprise on a hunch.
 
+### Iter 26 — Modal focus-trap a11y (shared useDialog hook)
+- Added `src/hooks/useDialog.ts`: wires Escape-close + focus-in-on-open + focus-restore-on-close + Tab-trap onto an existing container ref — **no layout change** (the reason full `Modal.tsx` adoption was deferred).
+- Applied to all six hand-rolled modals (ShareModal, SettingsModal, BatchRename, TrashView, RecentFiles, AuditLogModal): each container now has `ref` + `role="dialog"` + `aria-modal="true"` + `tabIndex=-1`, and their duplicate Escape effects were removed. PreviewModal keeps its own equivalent inline impl (iter 9).
+- Verified: `npm run build` clean.
+
 ## Open / found (remaining — low priority, deferred with reason)
-**Frontend** (LOW a11y, runtime-verification-gated)
-- TrashView/RecentFiles/AuditLogModal hand-rolled modals lack a focus trap (adopting `Modal.tsx` changes their layout — needs a human to eyeball it running). ContextMenu/BulkContextMenu/FileFilter dropdowns lack arrow-key nav (consistent, low impact).
+**Frontend** (LOW)
+- ContextMenu/BulkContextMenu/FileFilter dropdowns lack arrow-key nav (consistent, low impact; Escape + outside-click already work).
+**Backend** (deliberate, documented)
+- CSP `style-src 'unsafe-inline'` retained (share pages style inline; values escaped — low risk). Copy doesn't inherit metadata (not a leak; by design).
+
+---
+**Status:** all CRITICAL/HIGH/MED findings across 4 audit rounds are fixed with tests; remaining items are LOW polish or deliberate decisions. Branch is green (backend `go test ./...`, Linux build/vet/test-compile; frontend `npm run build`).
 **Backend**
 - LOW: stale keys in permissions/tags/backuptiers stores never pruned on Delete/Rename/Move; CSP `style-src 'unsafe-inline'` (share pages use inline styles — needs care).
 **Frontend** (verified, deferred)

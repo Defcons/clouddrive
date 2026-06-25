@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { getAuditLog } from '../api'
+import { useDialog } from '../hooks/useDialog'
 
 interface Props {
   onClose: () => void
@@ -33,13 +34,7 @@ export default function AuditLogModal({ onClose }: Props) {
     return () => { mounted = false }
   }, [])
 
-  useEffect(() => {
-    const handler = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose()
-    }
-    document.addEventListener('keydown', handler)
-    return () => document.removeEventListener('keydown', handler)
-  }, [onClose])
+  const dialogRef = useDialog<HTMLDivElement>(onClose)
 
   const filtered = filter
     ? entries.filter((e) =>
@@ -52,7 +47,11 @@ export default function AuditLogModal({ onClose }: Props) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onMouseDown={(e) => { if (e.target === e.currentTarget) onClose() }}>
       <div
-        className="bg-white dark:bg-gray-800 rounded-xl shadow-2xl w-full max-w-4xl mx-4 max-h-[85vh] flex flex-col overflow-hidden"
+        ref={dialogRef}
+        role="dialog"
+        aria-modal="true"
+        tabIndex={-1}
+        className="bg-white dark:bg-gray-800 rounded-xl shadow-2xl w-full max-w-4xl mx-4 max-h-[85vh] flex flex-col overflow-hidden focus:outline-none"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
