@@ -267,7 +267,7 @@ export default function FileExplorer({ initialPath, onLogout }: { initialPath: s
 
       if (isInput && !mod) return
 
-      if (mod && e.key === 'a') { e.preventDefault(); setSelectedFiles(new Set(files.map((f) => f.path))); return }
+      if (mod && e.key === 'a') { e.preventDefault(); setSelectedFiles(new Set(filteredFiles.map((f) => f.path))); return }
       if (mod && e.key === 'c' && !isInput && selectedFiles.size > 0) { setClipboard({ paths: Array.from(selectedFiles), mode: 'copy' }); return }
       if (mod && e.key === 'x' && !isInput && selectedFiles.size > 0) { setClipboard({ paths: Array.from(selectedFiles), mode: 'cut' }); return }
       if (mod && e.key === 'v' && !isInput) { handlePaste(); return }
@@ -310,7 +310,7 @@ export default function FileExplorer({ initialPath, onLogout }: { initialPath: s
     }
     window.addEventListener('keydown', handler)
     return () => window.removeEventListener('keydown', handler)
-  }, [previewFile, shareFile, showChangelog, showSettings, showTrash, showRecent, showAuditLog, contextMenu, renaming, selectedFiles, clipboard, files, path])
+  }, [previewFile, shareFile, showChangelog, showSettings, showTrash, showRecent, showAuditLog, contextMenu, renaming, selectedFiles, clipboard, files, filteredFiles, path])
 
   const handleUpload = async (fileList: FileList) => {
     setUploadProgress(0)
