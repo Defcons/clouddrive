@@ -31,9 +31,16 @@ Working branch: `loop/hardening`. **Never push `master`** — that auto-deploys 
 - `handlers/share.go` — constant-time password compare, symlink resolution on share subpaths, no password in URLs, ownership-scoped list/revoke, zip-slip guards. Sound.
 - JWT alg-confusion (all 3 parse sites assert HMAC), backup-code single-use, MFA enable/disable/regen re-verify password, CSRF (crypto/rand + constant-time + correct method scope), trusted-device forgery resistance. Sound.
 
+### Iter 3 — Trash subsystem: traversal, clobber, id-collision, list race
+- **Bug (data loss):** `Restore` used `os.Rename` straight onto the original path → silently overwrote a file created there since the delete. Now restores under a unique `" (restored)"` name (`uniqueDest`).
+- **Bug (defense-in-depth traversal):** `Restore` joined `root + OriginalPath` with no containment recheck. Now `resolveRestoreDest` rejects any destination escaping the storage root (the manifest is the only input and could be tampered).
+- **Bug (data loss):** `MoveToTrash` id = `<ms>_<base>` collided for same-named files deleted within 1ms → second move clobbered the first's trashed bytes. Now includes a 4-byte random suffix.
+- **Bug (data race):** admin branch of `List` returned the live backing slice, JSON-encoded after the lock released while mutators reslice in place. Now returns a copy.
+- **Tests:** `services/trash_test.go` — move/restore round-trip, relative-path traversal denied, no-clobber (restores alongside), unique ids (both payloads survive), permission denied for another user.
+- Note: per-user home-folder *re-confinement* on restore (beyond root + DeletedBy) deferred — would need homeFolder threaded into Restore; current gates (DeletedBy + root containment + delete-time home check) are adequate.
+
 ## Open / found (verified hypotheses from parallel audit 2026-06-25 — fix next, each needs repro+test)
 **Backend**
-- HIGH (trash): `services/trash.go` `Restore` does NOT re-validate `OriginalPath` against root (no safePath) nor home-folder confinement, and `os.Rename` silently clobbers an existing file at the destination → data loss. Also `MoveToTrash` id = `<ms>_<base>` can collide within 1ms. Authz is `DeletedBy==username`, weaker than the file handler's home confinement.
 - CRITICAL (notifications): `services/notifications.go` `Add` comment says "keep last 100" but never trims → unbounded slice + full-file O(n) rewrite per add (O(n²) over time).
 - HIGH (audit log): `services/auditlog.go` if `OpenFile` fails, `Log` silently no-ops with no startup error → audit silently disabled. Make it log/fail-fast.
 - HIGH (login enum): `services/userstore.go` `Authenticate` skips bcrypt when user not found → timing oracle for username enumeration. Fix: compare against a dummy hash.
