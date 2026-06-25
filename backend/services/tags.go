@@ -23,11 +23,7 @@ func NewTagStore(storageRoot string) *TagStore {
 }
 
 func (s *TagStore) load() {
-	data, err := os.ReadFile(s.filePath)
-	if err != nil {
-		return
-	}
-	json.Unmarshal(data, &s.tags)
+	loadJSONFile(s.filePath, &s.tags)
 }
 
 func (s *TagStore) save() error {

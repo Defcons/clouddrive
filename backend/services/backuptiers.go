@@ -26,11 +26,7 @@ func NewBackupTierStore(storageRoot string) *BackupTierStore {
 }
 
 func (s *BackupTierStore) load() {
-	data, err := os.ReadFile(s.filePath)
-	if err != nil {
-		return
-	}
-	json.Unmarshal(data, &s.tiers)
+	loadJSONFile(s.filePath, &s.tiers)
 }
 
 func (s *BackupTierStore) save() error {
