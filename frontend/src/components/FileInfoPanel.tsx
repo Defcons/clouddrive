@@ -50,11 +50,15 @@ export default function FileInfoPanel({ file, onClose }: Props) {
         {/* Preview / Icon */}
         <div className="flex justify-center py-2">
           {isImage ? (
-            <img
-              src={getPreviewUrl(file.path)}
-              alt={file.name}
-              className="max-w-full max-h-40 rounded-lg object-contain"
-            />
+            <>
+              <img
+                src={getPreviewUrl(file.path)}
+                alt={file.name}
+                className="max-w-full max-h-40 rounded-lg object-contain"
+                onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; (e.target as HTMLImageElement).nextElementSibling?.classList.remove('hidden') }}
+              />
+              <span className="hidden"><FileIcon name={file.name} isDir={false} /></span>
+            </>
           ) : (
             <div className="w-16 h-16 flex items-center justify-center">
               {file.isDir ? (

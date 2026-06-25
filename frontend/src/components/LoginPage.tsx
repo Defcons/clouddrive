@@ -19,25 +19,32 @@ export default function LoginPage({ onLogin }: { onLogin: () => void }) {
     e.preventDefault()
     setError('')
     setLoading(true)
+    // Track auth success separately so an error thrown by onLogin() (a
+    // post-auth navigation/refresh) isn't reported as bad credentials.
+    let authed = false
     try {
       const result = await login(username, password)
       if (result.mfaRequired) {
         setMfaToken(result.mfaToken)
         setStep('mfa')
       } else {
-        onLogin()
+        authed = true
       }
     } catch (err: any) {
       setError(err?.message || 'Invalid username or password')
     } finally {
       setLoading(false)
     }
+    if (authed) onLogin()
   }
 
   const handleMfaSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setError('')
     setLoading(true)
+    // Only auth failures should show "Invalid code" — the TOTP is consumed on
+    // success, so a post-login error must not send the user back to re-enter it.
+    let authed = false
     try {
       await challengeMfa({
         mfaToken,
@@ -45,12 +52,13 @@ export default function LoginPage({ onLogin }: { onLogin: () => void }) {
         backupCode: useBackup ? backupCode.trim() : undefined,
         trustDevice,
       })
-      onLogin()
+      authed = true
     } catch (err: any) {
       setError(err?.message || 'Invalid code')
     } finally {
       setLoading(false)
     }
+    if (authed) onLogin()
   }
 
   const handleBackToPassword = () => {

@@ -121,10 +121,16 @@ Working branch: `loop/hardening`. **Never push `master`** — that auto-deploys 
 - Also switched both modals' backdrop close to `onMouseDown`+target-check (no accidental close on drag-release).
 - Verified: `npm run build` clean.
 
-## Open / found (remaining — lower priority)
-**Frontend** (verified, deferred)
-- MED: LoginPage calls `onLogin()` inside the try, so a post-login throw shows "Invalid code" (misleading after the TOTP was already consumed).
-- LOW: FileInfoPanel image preview no onError fallback; TrashView/RecentFiles hand-rolled modals lack focus trap; TagPicker tags color-only (no aria-pressed/label); ShareModal `generated` latch + dead "Generating…" branch.
+### Iter 19 — LoginPage MFA dead-end + FileInfoPanel image fallback
+- **Bug (MED):** LoginPage called `onLogin()` inside the try, so a post-auth navigation error surfaced as "Invalid code"/"Invalid credentials" — and since the TOTP is consumed on success, the user got stuck re-entering a used code. `onLogin()` now runs after the try/finally, gated on an `authed` flag (both password and MFA steps).
+- **Bug (LOW visual):** FileInfoPanel image preview had no `onError` → broken-image glyph on a failed/denied preview. Now falls back to the file-type icon.
+- Verified: `npm run build` clean.
+
+## Open / found (remaining — low priority, deferred)
+**Frontend**
+- LOW: TrashView/RecentFiles hand-rolled modals lack focus trap; TagPicker tags color-only (no aria-pressed/label); ShareModal `generated` latch + dead "Generating…" branch; ContextMenu no arrow-key nav; Ctrl+A selects `files` not `filteredFiles`.
+**Backend**
+- LOW: stale keys in permissions/tags/backuptiers stores never pruned on Delete/Rename/Move; CSP `style-src 'unsafe-inline'` (share pages use inline styles — needs care).
 **Frontend** (verified, deferred)
 - MED: ShareModal/SettingsModal/BatchRename still hand-roll overlays without focus trap/restore/aria (full `Modal.tsx` adoption deferred — its fixed `max-w-md` chrome would change their layouts; needs runtime verification).
 - MED: ShareModal `generated` one-way latch hides the form + has a dead "Generating…" branch.
