@@ -96,6 +96,14 @@ func (s *UserStore) save() error {
 	return os.Rename(tmpPath, s.configPath)
 }
 
+// dummyHash is a valid bcrypt hash (at DefaultCost) of a random string. It's
+// compared against when the username doesn't exist so the login response time
+// matches the user-exists path, preventing username enumeration via timing.
+var dummyHash = func() []byte {
+	h, _ := bcrypt.GenerateFromPassword([]byte("nonexistent-user-timing-equalizer"), bcrypt.DefaultCost)
+	return h
+}()
+
 func (s *UserStore) Authenticate(username, password string) (*models.User, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
@@ -105,9 +113,13 @@ func (s *UserStore) Authenticate(username, password string) (*models.User, error
 			if err := bcrypt.CompareHashAndPassword([]byte(u.Password), []byte(password)); err != nil {
 				return nil, fmt.Errorf("invalid credentials")
 			}
-			return &u, nil
+			user := u
+			return &user, nil
 		}
 	}
+	// Unknown user: still run a bcrypt comparison so timing doesn't reveal
+	// whether the username exists.
+	_ = bcrypt.CompareHashAndPassword(dummyHash, []byte(password))
 	return nil, fmt.Errorf("invalid credentials")
 }
 
