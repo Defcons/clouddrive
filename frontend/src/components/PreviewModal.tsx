@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import type { FileItem } from '../types'
 import { getPreviewUrl, getPreviewType, fetchTextPreview, downloadFile } from '../api'
 
@@ -7,20 +7,27 @@ interface Props {
   onClose: () => void
 }
 
+// Cap rendered text so a multi-MB log doesn't freeze the tab in a <pre>.
+const MAX_TEXT_PREVIEW = 200_000
+
 export default function PreviewModal({ file, onClose }: Props) {
   const [textContent, setTextContent] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
   const type = getPreviewType(file.name)
   const url = getPreviewUrl(file.path)
+  const dialogRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
-    if (type === 'text') {
-      setLoading(true)
-      fetchTextPreview(file.path)
-        .then(setTextContent)
-        .catch(() => setTextContent('Failed to load file.'))
-        .finally(() => setLoading(false))
-    }
+    if (type !== 'text') return
+    // Guard against a slow fetch for a previous file overwriting a newer one.
+    let cancelled = false
+    setLoading(true)
+    setTextContent(null)
+    fetchTextPreview(file.path)
+      .then((t) => { if (!cancelled) setTextContent(t) })
+      .catch(() => { if (!cancelled) setTextContent('Failed to load file.') })
+      .finally(() => { if (!cancelled) setLoading(false) })
+    return () => { cancelled = true }
   }, [file.path, type])
 
   useEffect(() => {
@@ -31,10 +38,42 @@ export default function PreviewModal({ file, onClose }: Props) {
     return () => document.removeEventListener('keydown', handler)
   }, [onClose])
 
+  // Move focus into the dialog on open and restore it to the triggering
+  // element on close, so keyboard/screen-reader users aren't stranded.
+  useEffect(() => {
+    const prevFocus = document.activeElement as HTMLElement | null
+    dialogRef.current?.focus()
+    return () => prevFocus?.focus?.()
+  }, [])
+
+  // Minimal focus trap: keep Tab cycling within the dialog.
+  const trapTab = (e: React.KeyboardEvent) => {
+    if (e.key !== 'Tab') return
+    const focusables = dialogRef.current?.querySelectorAll<HTMLElement>(
+      'button, [href], input, textarea, select, [tabindex]:not([tabindex="-1"])',
+    )
+    if (!focusables || focusables.length === 0) return
+    const first = focusables[0]
+    const last = focusables[focusables.length - 1]
+    if (e.shiftKey && document.activeElement === first) {
+      e.preventDefault()
+      last.focus()
+    } else if (!e.shiftKey && document.activeElement === last) {
+      e.preventDefault()
+      first.focus()
+    }
+  }
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70" onClick={onClose}>
       <div
-        className="bg-white dark:bg-gray-800 rounded-none md:rounded-xl shadow-2xl max-w-5xl w-full mx-0 md:mx-4 max-h-full md:max-h-[90vh] h-full md:h-auto flex flex-col overflow-hidden"
+        ref={dialogRef}
+        role="dialog"
+        aria-modal="true"
+        aria-label={file.name}
+        tabIndex={-1}
+        onKeyDown={trapTab}
+        className="bg-white dark:bg-gray-800 rounded-none md:rounded-xl shadow-2xl max-w-5xl w-full mx-0 md:mx-4 max-h-full md:max-h-[90vh] h-full md:h-auto flex flex-col overflow-hidden outline-none"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
@@ -100,7 +139,12 @@ export default function PreviewModal({ file, onClose }: Props) {
 
           {type === 'text' && (
             <pre className="w-full h-[75vh] overflow-auto bg-gray-50 rounded-lg border border-gray-200 p-4 text-sm text-gray-800 font-mono whitespace-pre-wrap">
-              {loading ? 'Loading...' : textContent}
+              {loading
+                ? 'Loading...'
+                : textContent && textContent.length > MAX_TEXT_PREVIEW
+                  ? textContent.slice(0, MAX_TEXT_PREVIEW) +
+                    '\n\n— preview truncated; download the file to see the rest —'
+                  : textContent}
             </pre>
           )}
 
