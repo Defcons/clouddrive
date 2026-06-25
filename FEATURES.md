@@ -14,10 +14,16 @@ Goal: implement features #1–#9 from the recommendations, each polished + teste
 5. **WebDAV endpoint** — mount as a native drive (needs `x/net/webdav`). — TODO (dep check)
 6. **Per-user storage quotas** — enforce caps on upload. — ✅ DONE
 7. **File versioning** — keep previous copy on overwrite. — ✅ DONE
-8. **Active-session management** — list + revoke signed-in devices. — TODO
+8. **Active-session management** — list + revoke signed-in devices. — ✅ DONE
 9. **Full-text / content search** — search inside text/PDF. — TODO
 
 ## Done
+### #8 — Active session management
+- `SessionStore` (persisted `.sessions.json`): Create→id, IsValid, Touch (in-mem last-seen), List, Revoke (owner/admin), RevokeAllForUser, PruneExpired (startup). Session tokens now carry a `jti`; `AuthMiddleware.SetSessionValidator` (optional — nil keeps tests/old behavior) rejects revoked/missing jti and records activity. Login/Challenge create a session; Logout revokes the current one (parses the cookie token directly, since logout isn't auth-wrapped); password change revokes all.
+- Endpoints: `GET /api/auth/sessions` (own, current flagged), `POST /api/auth/sessions/revoke`. Frontend: "Active sessions" section in Settings — device/OS label, IP, last-seen, "this device" badge, sign-out per session.
+- Tests: `services/sessions_test.go` (lifecycle, cross-user revoke denied, admin/revoke-all, persistence) + `middleware/auth_test.go` (validator: active allowed, revoked/missing-jti 401).
+- Shared `saveJSONFile` helper added (companion to loadJSONFile).
+
 ### #7 — File versioning
 - `VersionStore` (`<root>/.versions/<sha256(path)>/<nanotime>.bin`, retains newest 10). `Upload` snapshots an existing file before overwriting it. Restore snapshots the current file first (reversible). Version id is the nanotime — validated numeric to block path traversal.
 - Endpoints: `GET /api/files/versions`, `GET /api/files/versions/download` (ServeContent), `POST /api/files/versions/restore`. All checkAccess-gated.

@@ -104,9 +104,13 @@ func main() {
 	csrfMiddleware := middleware.NewCSRFMiddleware()
 	sharePwLimiter := middleware.NewRateLimiter(10, 5*time.Minute, 15*time.Minute)
 
+	sessionStore := services.NewSessionStore(storageRoot)
+	sessionStore.PruneExpired(handlers.JWTLifetime, time.Now().UnixMilli())
+
 	mfaHandler := handlers.NewMfaHandler(userStore, jwtSecret, auditLog)
-	authHandler := handlers.NewAuthHandler(userStore, jwtSecret, loginLimiter, auditLog, mfaHandler)
+	authHandler := handlers.NewAuthHandler(userStore, jwtSecret, loginLimiter, auditLog, mfaHandler, sessionStore)
 	authMiddleware := middleware.NewAuthMiddleware(jwtSecret, userStore)
+	authMiddleware.SetSessionValidator(sessionStore)
 	versionStore := services.NewVersionStore(storageRoot)
 	fileHandler := handlers.NewFileHandler(storageRoot, permStore, auditLog, trashStore, tagStore, tierStore)
 	fileHandler.SetQuotaLookup(userStore.GetQuota)
@@ -214,6 +218,8 @@ func registerAuthRoutes(mux *http.ServeMux, h *handlers.AuthHandler, auth *middl
 	mux.HandleFunc("GET /api/auth/check", auth.Wrap(h.Check))
 	mux.HandleFunc("POST /api/auth/change-password", protectedWrite(h.ChangePassword))
 	mux.HandleFunc("GET /api/csrf", auth.Wrap(csrf.GetToken))
+	mux.HandleFunc("GET /api/auth/sessions", auth.Wrap(h.Sessions))
+	mux.HandleFunc("POST /api/auth/sessions/revoke", protectedWrite(h.RevokeSession))
 }
 
 func registerMfaRoutes(mux *http.ServeMux, h *handlers.MfaHandler, auth *handlers.AuthHandler, am *middleware.AuthMiddleware, limiter *middleware.RateLimiter, protectedWrite func(http.HandlerFunc) http.HandlerFunc) {
