@@ -66,9 +66,14 @@ Working branch: `loop/hardening`. **Never push `master`** — that auto-deploys 
 - **Bug (visual):** `formatSize` could index past the units array for ≥1 PB → "undefined". Added PB + clamped the index.
 - Verified: `npm run build` clean.
 
+### Iter 9 — PreviewModal a11y + robustness
+- **Bug (a11y):** modal had no `role="dialog"`/`aria-modal`, didn't move focus in on open or restore it on close, and didn't trap Tab → keyboard/screen-reader users could tab behind it and lost focus on close. Added dialog role + aria-label, focus-in/restore, and a minimal Tab focus trap.
+- **Bug (race):** text-preview fetch had no stale guard — a slow load for a previous file could overwrite a newer one. Added a cancelled-flag guard (resets content on file change).
+- **Bug (perf/visual):** text preview rendered the entire file into a `<pre>` → multi-MB logs froze the tab. Now truncates display at 200 KB with a download hint.
+- Verified: `npm run build` clean.
+
 ## Open / found (remaining — lower priority)
 **Frontend** (verified, deferred)
-- MED: PreviewModal lacks focus trap / aria-modal / focus restore; text preview no AbortController + unbounded `<pre>`.
 - MED: bulk delete/download overwrite each other's error banners; no per-item failure summary; bulk download fires N anchor clicks (popup-flood risk).
 - LOW: list-view `<img>` missing onError fallback (grid has one); downloadFile revokes object URL synchronously; Ctrl+A selects `files` not `filteredFiles` (left as-is to avoid effect stale-closure risk).
 **Backend / perf**
