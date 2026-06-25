@@ -13,6 +13,25 @@ export type CurrentUser = {
 
 let currentUser: CurrentUser | null = null
 
+// Registered by App so any API call that sees a 401 (expired/invalidated
+// session) can bounce the user back to the login screen instead of leaving
+// the app stuck behind a generic error.
+let onAuthExpired: (() => void) | null = null
+
+export function setOnAuthExpired(fn: (() => void) | null) {
+  onAuthExpired = fn
+}
+
+// checkAuthExpired clears local auth state and notifies App when a response
+// shows the session is no longer valid.
+function checkAuthExpired(res: Response) {
+  if (res.status === 401) {
+    currentUser = null
+    csrfToken = null
+    onAuthExpired?.()
+  }
+}
+
 export function getCurrentUser(): CurrentUser {
   return (
     currentUser ?? {
@@ -225,7 +244,10 @@ export async function changePassword(currentPassword: string, newPassword: strin
 
 export async function listFiles(path: string) {
   const res = await fetch(`${API_BASE}/files?path=${encodeURIComponent(path)}`, FETCH_OPTS)
-  if (!res.ok) throw new Error('Failed to list files')
+  if (!res.ok) {
+    checkAuthExpired(res)
+    throw new Error('Failed to list files')
+  }
   return res.json()
 }
 
@@ -240,7 +262,9 @@ export async function downloadFile(path: string) {
   document.body.appendChild(a)
   a.click()
   document.body.removeChild(a)
-  URL.revokeObjectURL(url)
+  // Defer revoke so the browser has started the download before the object
+  // URL is freed (revoking synchronously can abort large downloads).
+  setTimeout(() => URL.revokeObjectURL(url), 1000)
 }
 
 export async function uploadFiles(
@@ -425,17 +449,26 @@ export function getQuickAccess(): { name: string; path: string }[] {
   }
 }
 
+// writeQuickAccess persists the list, swallowing storage errors (e.g. Safari
+// private mode or quota exceeded) so a click handler can't crash the app.
+function writeQuickAccess(items: { name: string; path: string }[]) {
+  try {
+    localStorage.setItem(quickAccessKey(), JSON.stringify(items))
+  } catch {
+    // Non-fatal: quick access is a convenience, not critical state.
+  }
+}
+
 export function addQuickAccess(name: string, path: string) {
   const items = getQuickAccess()
   if (!items.find((i) => i.path === path)) {
     items.push({ name, path })
-    localStorage.setItem(quickAccessKey(), JSON.stringify(items))
+    writeQuickAccess(items)
   }
 }
 
 export function removeQuickAccess(path: string) {
-  const items = getQuickAccess().filter((i) => i.path !== path)
-  localStorage.setItem(quickAccessKey(), JSON.stringify(items))
+  writeQuickAccess(getQuickAccess().filter((i) => i.path !== path))
 }
 
 // Return types kept loose here — concrete shapes live in types.ts and are

@@ -90,6 +90,14 @@ func main() {
 	notifStore := services.NewNotificationStore(storageRoot)
 	tierStore := services.NewBackupTierStore(storageRoot)
 
+	// When an item is permanently removed from trash, drop its per-path
+	// metadata so a path of the same name created later doesn't inherit it.
+	trashStore.SetMetadataPruner(func(originalPath string) {
+		_ = permStore.PrunePath(originalPath)
+		_ = tagStore.PrunePath(originalPath)
+		_ = tierStore.PrunePath(originalPath)
+	})
+
 	trashStore.CleanExpired()
 
 	loginLimiter := middleware.NewRateLimiter(5, 2*time.Minute, 5*time.Minute)
@@ -107,7 +115,7 @@ func main() {
 	auditHandler := handlers.NewAuditHandler(auditLog)
 	trashHandler := handlers.NewTrashHandler(trashStore, auditLog)
 	notifHandler := handlers.NewNotificationHandler(notifStore)
-	tierHandler := handlers.NewBackupTierHandler(tierStore, auditLog)
+	tierHandler := handlers.NewBackupTierHandler(tierStore, permStore, auditLog)
 
 	mux := http.NewServeMux()
 

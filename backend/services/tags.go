@@ -23,11 +23,7 @@ func NewTagStore(storageRoot string) *TagStore {
 }
 
 func (s *TagStore) load() {
-	data, err := os.ReadFile(s.filePath)
-	if err != nil {
-		return
-	}
-	json.Unmarshal(data, &s.tags)
+	loadJSONFile(s.filePath, &s.tags)
 }
 
 func (s *TagStore) save() error {
@@ -91,6 +87,27 @@ func (s *TagStore) RemoveTag(path, tag string) error {
 		s.tags[path] = updated
 	}
 	return s.save()
+}
+
+// MovePath migrates tags for path (and any descendants) to newPath so a
+// renamed/moved file keeps its tags.
+func (s *TagStore) MovePath(oldPath, newPath string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if movePathKeys(s.tags, oldPath, newPath) {
+		return s.save()
+	}
+	return nil
+}
+
+// PrunePath drops tags for path and any descendants (permanent delete).
+func (s *TagStore) PrunePath(path string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if prunePathKeys(s.tags, path) {
+		return s.save()
+	}
+	return nil
 }
 
 // GetAllTagged returns all paths that have any tags (for enriching file listings)

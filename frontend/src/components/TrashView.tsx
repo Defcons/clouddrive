@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { listTrash, restoreFromTrash, deleteFromTrash, emptyTrash } from '../api'
 import type { TrashItem } from '../types'
 import { confirm as confirmModal } from './ConfirmModal'
+import { useDialog } from '../hooks/useDialog'
 
 interface Props {
   onClose: () => void
@@ -10,8 +11,8 @@ interface Props {
 
 function formatSize(bytes: number): string {
   if (bytes === 0) return '0 B'
-  const units = ['B', 'KB', 'MB', 'GB', 'TB']
-  const i = Math.floor(Math.log(bytes) / Math.log(1024))
+  const units = ['B', 'KB', 'MB', 'GB', 'TB', 'PB']
+  const i = Math.min(Math.floor(Math.log(bytes) / Math.log(1024)), units.length - 1)
   return `${(bytes / Math.pow(1024, i)).toFixed(i > 0 ? 1 : 0)} ${units[i]}`
 }
 
@@ -25,28 +26,29 @@ function formatDate(ms: number): string {
 export default function TrashView({ onClose, onNavigate }: Props) {
   const [items, setItems] = useState<TrashItem[]>([])
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState('')
 
   const refresh = () => {
     setLoading(true)
+    setError('')
     listTrash()
       .then(setItems)
-      .catch(() => setItems([]))
+      .catch(() => setError('Couldn’t load trash. Try again.'))
       .finally(() => setLoading(false))
   }
 
   useEffect(() => { refresh() }, [])
 
-  useEffect(() => {
-    const handler = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
-    document.addEventListener('keydown', handler)
-    return () => document.removeEventListener('keydown', handler)
-  }, [onClose])
+  const dialogRef = useDialog<HTMLDivElement>(onClose)
 
   const handleRestore = async (id: string) => {
+    setError('')
     try {
       await restoreFromTrash(id)
       refresh()
-    } catch {}
+    } catch {
+      setError('Failed to restore item.')
+    }
   }
 
   const handleDelete = async (id: string) => {
@@ -57,10 +59,13 @@ export default function TrashView({ onClose, onNavigate }: Props) {
       confirmLabel: 'Delete forever',
     })
     if (!ok) return
+    setError('')
     try {
       await deleteFromTrash(id)
       refresh()
-    } catch {}
+    } catch {
+      setError('Failed to delete item.')
+    }
   }
 
   const handleEmpty = async () => {
@@ -71,15 +76,18 @@ export default function TrashView({ onClose, onNavigate }: Props) {
       confirmLabel: 'Empty trash',
     })
     if (!ok) return
+    setError('')
     try {
       await emptyTrash()
       refresh()
-    } catch {}
+    } catch {
+      setError('Failed to empty trash.')
+    }
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={onClose}>
-      <div className="bg-white dark:bg-gray-800 rounded-xl shadow-2xl w-full max-w-3xl mx-0 md:mx-4 max-h-full md:max-h-[80vh] h-full md:h-auto flex flex-col overflow-hidden" onClick={(e) => e.stopPropagation()}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onMouseDown={(e) => { if (e.target === e.currentTarget) onClose() }}>
+      <div ref={dialogRef} role="dialog" aria-modal="true" tabIndex={-1} className="bg-white dark:bg-gray-800 rounded-xl shadow-2xl w-full max-w-3xl mx-0 md:mx-4 max-h-full md:max-h-[80vh] h-full md:h-auto flex flex-col overflow-hidden focus:outline-none" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between px-5 py-4 border-b border-gray-200 dark:border-gray-700 flex-shrink-0">
           <div className="flex items-center gap-2">
             <svg className="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -101,6 +109,12 @@ export default function TrashView({ onClose, onNavigate }: Props) {
             </button>
           </div>
         </div>
+
+        {error && (
+          <div className="mx-5 mt-3 px-3 py-2 bg-red-50 dark:bg-red-900/30 text-red-600 dark:text-red-400 text-sm rounded-md flex-shrink-0">
+            {error}
+          </div>
+        )}
 
         <div className="flex-1 overflow-y-auto">
           {loading ? (
