@@ -77,9 +77,17 @@ Working branch: `loop/hardening`. **Never push `master`** — that auto-deploys 
 - **Bug (LOW, visual):** list-view image thumbnails had no `onError`, so a thumbnail that 403s/fails to decode showed a broken-image glyph. Now falls back to the file-type icon (mirrors the grid view).
 - Verified: `npm run build` clean.
 
+### Iter 11 — Download URL revoke timing + untrack build artifact
+- **Bug (LOW):** `downloadFile` revoked the object URL synchronously after `click()`, which can abort large downloads in some browsers. Now deferred 1s.
+- **Repo hygiene:** `frontend/tsconfig.tsbuildinfo` (a tsc build artifact) was tracked in git → `git rm --cached` + added to `.gitignore`.
+- Verified: `npm run build` clean.
+
 ## Open / found (remaining — lower priority)
 **Frontend** (verified, deferred)
-- LOW: `downloadFile` revokes the object URL synchronously after click (works today; fragile for huge blobs); Ctrl+A selects `files` not `filteredFiles` (left as-is to avoid effect stale-closure risk).
+- LOW: Ctrl+A selects `files` not `filteredFiles` (left as-is to avoid effect stale-closure risk).
+**Not yet deeply audited** (candidates for a fresh audit pass)
+- Backend: `handlers/permissions.go`, `handlers/backuptiers.go`, `handlers/walk.go` (walkFilesNoSymlinks), `services/tags.go`, `services/backuptiers.go`, `middleware/security.go` (CSP `style-src 'unsafe-inline'`).
+- Frontend: ShareModal, SettingsModal, Sidebar, ContextMenu, BatchRename, SearchResults.
 **Backend / perf**
 - `handlers/files.go` `List` does an extra `os.ReadDir` per directory entry (itemCount) — N+1 syscalls on large dirs.
 **Repo**
