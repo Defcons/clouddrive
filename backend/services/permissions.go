@@ -30,11 +30,7 @@ func NewPermissionStore(storageRoot string) *PermissionStore {
 }
 
 func (s *PermissionStore) load() {
-	data, err := os.ReadFile(s.configPath)
-	if err != nil {
-		return // file doesn't exist yet, that's fine
-	}
-	json.Unmarshal(data, &s.permissions)
+	loadJSONFile(s.configPath, &s.permissions)
 }
 
 func (s *PermissionStore) save() error {

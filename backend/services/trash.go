@@ -44,11 +44,7 @@ func NewTrashStore(storageRoot string) *TrashStore {
 }
 
 func (s *TrashStore) load() {
-	data, err := os.ReadFile(filepath.Join(s.trashDir, "manifest.json"))
-	if err != nil {
-		return
-	}
-	json.Unmarshal(data, &s.manifest)
+	loadJSONFile(filepath.Join(s.trashDir, "manifest.json"), &s.manifest)
 }
 
 func (s *TrashStore) save() error {
