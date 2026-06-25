@@ -32,9 +32,10 @@ type AuthHandler struct {
 	audit        *services.AuditLogger
 	cookieSecure bool
 	mfa          *MfaHandler // non-nil; used to check trusted-device cookie
+	sessions     *services.SessionStore
 }
 
-func NewAuthHandler(userStore *services.UserStore, jwtSecret string, rateLimiter RateLimitResetter, audit *services.AuditLogger, mfa *MfaHandler) *AuthHandler {
+func NewAuthHandler(userStore *services.UserStore, jwtSecret string, rateLimiter RateLimitResetter, audit *services.AuditLogger, mfa *MfaHandler, sessions *services.SessionStore) *AuthHandler {
 	secure := os.Getenv("COOKIE_INSECURE") != "1"
 	return &AuthHandler{
 		userStore:    userStore,
@@ -43,6 +44,7 @@ func NewAuthHandler(userStore *services.UserStore, jwtSecret string, rateLimiter
 		audit:        audit,
 		cookieSecure: secure,
 		mfa:          mfa,
+		sessions:     sessions,
 	}
 }
 
@@ -85,24 +87,31 @@ func (h *AuthHandler) clearAuthCookie(w http.ResponseWriter) {
 	})
 }
 
-// signSessionToken mints the main session JWT carried in the auth cookie.
-func (h *AuthHandler) signSessionToken(user *models.User) (string, error) {
+// signSessionToken mints the main session JWT carried in the auth cookie. jti
+// is the server-side session id, used for per-session revocation.
+func (h *AuthHandler) signSessionToken(user *models.User, jti string) (string, error) {
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
 		"sub":        user.Username,
 		"role":       user.Role,
 		"homeFolder": user.HomeFolder,
 		"pwv":        user.PwVersion,
 		"kind":       "session",
+		"jti":        jti,
 		"exp":        time.Now().Add(JWTLifetime).Unix(),
 		"iat":        time.Now().Unix(),
 	})
 	return token.SignedString(h.jwtSecret)
 }
 
-// issueSession writes the session cookie and the user-info JSON. Shared by
-// Login (MFA-disabled path) and MfaHandler.Challenge (MFA-enabled path).
-func (h *AuthHandler) issueSession(w http.ResponseWriter, user *models.User) error {
-	tokenString, err := h.signSessionToken(user)
+// issueSession registers a server-side session, writes the session cookie and
+// the user-info JSON. Shared by Login (MFA-disabled path) and
+// MfaHandler.Challenge (MFA-enabled path).
+func (h *AuthHandler) issueSession(w http.ResponseWriter, r *http.Request, user *models.User) error {
+	jti := ""
+	if h.sessions != nil {
+		jti = h.sessions.Create(user.Username, r.UserAgent(), clientIP(r), time.Now().UnixMilli())
+	}
+	tokenString, err := h.signSessionToken(user, jti)
 	if err != nil {
 		return err
 	}
@@ -162,7 +171,7 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 			if h.rateLimiter != nil {
 				h.rateLimiter.Reset(r)
 			}
-			if err := h.issueSession(w, user); err != nil {
+			if err := h.issueSession(w, r, user); err != nil {
 				http.Error(w, "Failed to create session", http.StatusInternalServerError)
 			}
 			return
@@ -193,7 +202,7 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 		h.rateLimiter.Reset(r)
 	}
 
-	if err := h.issueSession(w, user); err != nil {
+	if err := h.issueSession(w, r, user); err != nil {
 		slog.Warn("issue session failed", "err", err)
 		http.Error(w, "Failed to create session", http.StatusInternalServerError)
 	}
@@ -201,11 +210,73 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 
 func (h *AuthHandler) Logout(w http.ResponseWriter, r *http.Request) {
 	h.clearAuthCookie(w)
+	// Revoke this device's server-side session so its cookie can't be replayed.
+	// Logout isn't auth-wrapped, so parse the cookie token directly (best effort).
+	if h.sessions != nil {
+		if tok := middleware.ExtractToken(r); tok != "" {
+			parsed, err := jwt.Parse(tok, func(t *jwt.Token) (interface{}, error) {
+				if _, ok := t.Method.(*jwt.SigningMethodHMAC); !ok {
+					return nil, jwt.ErrSignatureInvalid
+				}
+				return h.jwtSecret, nil
+			})
+			if err == nil {
+				if claims, ok := parsed.Claims.(jwt.MapClaims); ok {
+					jti, _ := claims["jti"].(string)
+					sub, _ := claims["sub"].(string)
+					role, _ := claims["role"].(string)
+					if jti != "" {
+						h.sessions.Revoke(jti, sub, role)
+					}
+				}
+			}
+		}
+	}
 	// Note: trusted-device cookie is NOT cleared on logout — that's the point
 	// of "trust this device." Clearing happens on password change or explicit
 	// MFA disable.
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(map[string]bool{"ok": true})
+}
+
+// Sessions lists the caller's active sessions, flagging the current one.
+func (h *AuthHandler) Sessions(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	if h.sessions == nil {
+		_ = json.NewEncoder(w).Encode([]any{})
+		return
+	}
+	current := middleware.GetSessionID(r)
+	list := h.sessions.List(middleware.GetUsername(r))
+	out := make([]map[string]interface{}, 0, len(list))
+	for _, s := range list {
+		out = append(out, map[string]interface{}{
+			"id":        s.ID,
+			"createdAt": s.CreatedAt,
+			"lastSeen":  s.LastSeen,
+			"userAgent": s.UserAgent,
+			"ip":        s.IP,
+			"current":   s.ID == current,
+		})
+	}
+	_ = json.NewEncoder(w).Encode(out)
+}
+
+// RevokeSession revokes one of the caller's sessions (or, for admins, any).
+func (h *AuthHandler) RevokeSession(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		ID string `json:"id"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.ID == "" {
+		http.Error(w, "Invalid request", http.StatusBadRequest)
+		return
+	}
+	if h.sessions == nil || !h.sessions.Revoke(req.ID, middleware.GetUsername(r), middleware.GetRole(r)) {
+		http.Error(w, "Session not found", http.StatusNotFound)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(map[string]string{"revoked": req.ID})
 }
 
 func (h *AuthHandler) Check(w http.ResponseWriter, r *http.Request) {
@@ -247,6 +318,12 @@ func (h *AuthHandler) ChangePassword(w http.ResponseWriter, r *http.Request) {
 
 	if h.audit != nil {
 		h.audit.Log("PW_CHANGE", username, clientIP(r), "password changed")
+	}
+
+	// Drop all server-side sessions for this user (pwv already invalidates the
+	// JWTs; this also clears them from the active-sessions list).
+	if h.sessions != nil {
+		h.sessions.RevokeAllForUser(username)
 	}
 
 	// Password change bumps pwv → invalidates session AND all trusted-device

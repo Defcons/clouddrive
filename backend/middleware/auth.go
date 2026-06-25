@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/golang-jwt/jwt/v5"
 )
@@ -15,7 +16,15 @@ const (
 	ctxKeyUsername   ctxKey = "username"
 	ctxKeyRole       ctxKey = "role"
 	ctxKeyHomeFolder ctxKey = "homeFolder"
+	ctxKeySessionID  ctxKey = "sessionID"
 )
+
+// SessionValidator lets the middleware reject revoked sessions and record
+// activity. Optional — when unset, the session id (jti) is not enforced.
+type SessionValidator interface {
+	IsValid(id string) bool
+	Touch(id, ip string, nowMillis int64)
+}
 
 // AuthCookieName is the name of the HttpOnly cookie carrying the JWT.
 const AuthCookieName = "clouddrive_session"
@@ -27,10 +36,25 @@ type PwVersionChecker interface {
 type AuthMiddleware struct {
 	jwtSecret []byte
 	pwChecker PwVersionChecker
+	sessions  SessionValidator
 }
 
 func NewAuthMiddleware(jwtSecret string, pwChecker PwVersionChecker) *AuthMiddleware {
 	return &AuthMiddleware{jwtSecret: []byte(jwtSecret), pwChecker: pwChecker}
+}
+
+// SetSessionValidator enables per-session (jti) validation/revocation. When
+// unset, session tokens are accepted on signature + claims alone.
+func (m *AuthMiddleware) SetSessionValidator(v SessionValidator) {
+	m.sessions = v
+}
+
+// GetSessionID returns the session id (jti) carried by the request's token.
+func GetSessionID(r *http.Request) string {
+	if v, ok := r.Context().Value(ctxKeySessionID).(string); ok {
+		return v
+	}
+	return ""
 }
 
 // extractToken pulls the JWT from (1) the HttpOnly cookie, or (2) an
@@ -109,6 +133,19 @@ func (m *AuthMiddleware) Wrap(next http.HandlerFunc) http.HandlerFunc {
 				http.Error(w, "Session expired — please login again", http.StatusUnauthorized)
 				return
 			}
+		}
+
+		// Per-session validation/revocation (when a validator is wired).
+		jti, _ := claims["jti"].(string)
+		if jti != "" {
+			ctx = context.WithValue(ctx, ctxKeySessionID, jti)
+		}
+		if m.sessions != nil {
+			if !m.sessions.IsValid(jti) {
+				http.Error(w, "Session has been revoked — please login again", http.StatusUnauthorized)
+				return
+			}
+			m.sessions.Touch(jti, getIP(r), time.Now().UnixMilli())
 		}
 
 		next(w, r.WithContext(ctx))

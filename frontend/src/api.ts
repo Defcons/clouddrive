@@ -295,6 +295,53 @@ export async function uploadFiles(
   })
 }
 
+// Files larger than this use the chunked/resumable path so a dropped
+// connection only loses the current chunk, not the whole upload.
+export const CHUNK_THRESHOLD = 8 * 1024 * 1024
+const CHUNK_SIZE = 8 * 1024 * 1024
+
+export async function uploadFileChunked(
+  path: string,
+  file: File,
+  onProgress?: (pct: number) => void,
+) {
+  const uploadId = (crypto.randomUUID?.() || `u${Date.now()}${Math.floor(Math.random() * 1e9)}`)
+  const total = Math.max(1, Math.ceil(file.size / CHUNK_SIZE))
+  const csrf = await ensureCSRF()
+
+  for (let i = 0; i < total; i++) {
+    const blob = file.slice(i * CHUNK_SIZE, (i + 1) * CHUNK_SIZE)
+    let ok = false
+    let lastStatus = 0
+    for (let attempt = 0; attempt < 3 && !ok; attempt++) {
+      try {
+        const res = await fetch(
+          `${API_BASE}/files/upload/chunk?uploadId=${encodeURIComponent(uploadId)}&index=${i}&path=${encodeURIComponent(path)}`,
+          { ...FETCH_OPTS, method: 'POST', headers: { 'X-CSRF-Token': csrf }, body: blob },
+        )
+        lastStatus = res.status
+        if (res.ok) ok = true
+        else if (res.status === 401) { checkAuthExpired(res); throw new Error('Session expired') }
+      } catch {
+        // network blip — retry this chunk
+      }
+    }
+    if (!ok) throw new Error(lastStatus === 413 ? 'Chunk too large' : 'Upload failed (network)')
+    onProgress?.(Math.round(((i + 1) / total) * 100))
+  }
+
+  const res = await fetch(`${API_BASE}/files/upload/complete`, {
+    ...FETCH_OPTS,
+    method: 'POST',
+    headers: await writeHeaders(),
+    body: JSON.stringify({ uploadId, name: file.name, path, total }),
+  })
+  if (!res.ok) {
+    if (res.status === 401) checkAuthExpired(res)
+    throw new Error((await res.text()) || 'Upload failed')
+  }
+}
+
 export async function createFolder(path: string, name: string) {
   const res = await fetch(`${API_BASE}/files/mkdir`, {
     ...FETCH_OPTS,
@@ -333,6 +380,12 @@ export async function deleteFile(path: string) {
 // Referer headers, etc.
 export function getPreviewUrl(path: string): string {
   return `${API_BASE}/files/preview?path=${encodeURIComponent(path)}`
+}
+
+// Small cached thumbnail for image tiles/rows (full preview is used in the
+// modal). Falls back to the original for types the server can't downscale.
+export function getThumbnailUrl(path: string): string {
+  return `${API_BASE}/files/thumbnail?path=${encodeURIComponent(path)}`
 }
 
 const PREVIEWABLE_EXTENSIONS = new Set([
@@ -474,8 +527,9 @@ export function removeQuickAccess(path: string) {
 // Return types kept loose here — concrete shapes live in types.ts and are
 // imported by the components that consume these functions.
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-export async function searchFiles(query: string): Promise<any[]> {
-  const res = await fetch(`${API_BASE}/files/search?q=${encodeURIComponent(query)}`, FETCH_OPTS)
+export async function searchFiles(query: string, content = false): Promise<any[]> {
+  const url = `${API_BASE}/files/search?q=${encodeURIComponent(query)}${content ? '&content=1' : ''}`
+  const res = await fetch(url, FETCH_OPTS)
   if (!res.ok) throw new Error('Search failed')
   return res.json()
 }
@@ -608,6 +662,119 @@ export async function markNotificationsRead(ids?: string[]) {
 export async function getAuditLog(limit = 200): Promise<{ timestamp: string; action: string; username: string; ip: string; detail: string }[]> {
   const res = await fetch(`${API_BASE}/audit?limit=${limit}`, FETCH_OPTS)
   if (!res.ok) throw new Error('Failed to fetch audit log')
+  return res.json()
+}
+
+// ---- Active sessions ----
+
+export type ActiveSession = {
+  id: string
+  createdAt: number
+  lastSeen: number
+  userAgent: string
+  ip: string
+  current: boolean
+}
+
+export async function listSessions(): Promise<ActiveSession[]> {
+  const res = await fetch(`${API_BASE}/auth/sessions`, FETCH_OPTS)
+  if (!res.ok) throw new Error('Failed to load sessions')
+  return res.json()
+}
+
+export async function revokeSession(id: string) {
+  const res = await fetch(`${API_BASE}/auth/sessions/revoke`, {
+    ...FETCH_OPTS,
+    method: 'POST',
+    headers: await writeHeaders(),
+    body: JSON.stringify({ id }),
+  })
+  if (!res.ok) throw new Error((await res.text()) || 'Failed to revoke session')
+  return res.json()
+}
+
+// ---- File versions ----
+
+export type FileVersion = { id: string; size: number; savedAt: number }
+
+export async function listVersions(path: string): Promise<FileVersion[]> {
+  const res = await fetch(`${API_BASE}/files/versions?path=${encodeURIComponent(path)}`, FETCH_OPTS)
+  if (!res.ok) throw new Error('Failed to load versions')
+  return res.json()
+}
+
+export function getVersionDownloadUrl(path: string, id: string): string {
+  return `${API_BASE}/files/versions/download?path=${encodeURIComponent(path)}&id=${encodeURIComponent(id)}`
+}
+
+export async function restoreVersion(path: string, id: string) {
+  const res = await fetch(`${API_BASE}/files/versions/restore`, {
+    ...FETCH_OPTS,
+    method: 'POST',
+    headers: await writeHeaders(),
+    body: JSON.stringify({ path, id }),
+  })
+  if (!res.ok) throw new Error((await res.text()) || 'Failed to restore version')
+  return res.json()
+}
+
+// ---- Admin: user management ----
+
+export type AdminUser = {
+  username: string
+  homeFolder: string
+  role: string
+  quota: number
+  mfaEnabled: boolean
+}
+
+export async function listUsers(): Promise<AdminUser[]> {
+  const res = await fetch(`${API_BASE}/admin/users`, FETCH_OPTS)
+  if (!res.ok) throw new Error('Failed to load users')
+  return res.json()
+}
+
+export async function createUser(u: {
+  username: string
+  password: string
+  homeFolder: string
+  role: string
+  quota: number
+}) {
+  const res = await fetch(`${API_BASE}/admin/users`, {
+    ...FETCH_OPTS,
+    method: 'POST',
+    headers: await writeHeaders(),
+    body: JSON.stringify(u),
+  })
+  if (!res.ok) throw new Error((await res.text()) || 'Failed to create user')
+  return res.json()
+}
+
+export async function updateUser(u: {
+  username: string
+  homeFolder: string
+  role: string
+  quota: number
+  newPassword?: string
+}) {
+  const res = await fetch(`${API_BASE}/admin/users/update`, {
+    ...FETCH_OPTS,
+    method: 'POST',
+    headers: await writeHeaders(),
+    body: JSON.stringify({ ...u, newPassword: u.newPassword || '' }),
+  })
+  if (!res.ok) throw new Error((await res.text()) || 'Failed to update user')
+  return res.json()
+}
+
+export async function deleteUser(username: string) {
+  const res = await fetch(`${API_BASE}/admin/users?username=${encodeURIComponent(username)}`, {
+    ...FETCH_OPTS,
+    method: 'DELETE',
+    headers: await writeHeadersNoContent(),
+  })
+  if (!res.ok) throw new Error((await res.text()) || 'Failed to delete user')
   return res.json()
 }
 

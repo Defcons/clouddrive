@@ -10,7 +10,14 @@ import (
 )
 
 type DiskHandler struct {
-	root string
+	root    string
+	quotaOf func(username string) int64
+}
+
+// SetQuotaLookup wires a per-user quota source so the caller's quota is
+// reported alongside usage.
+func (h *DiskHandler) SetQuotaLookup(fn func(username string) int64) {
+	h.quotaOf = fn
 }
 
 type UserUsage struct {
@@ -24,6 +31,7 @@ type DiskUsage struct {
 	TotalSize  int64       `json:"totalSize"`
 	TotalSpace int64       `json:"totalSpace"`
 	FreeSpace  int64       `json:"freeSpace"`
+	Quota      int64       `json:"quota,omitempty"` // caller's quota (0 = unlimited)
 	PerUser    []UserUsage `json:"perUser"`
 }
 
@@ -41,6 +49,9 @@ func (h *DiskHandler) Usage(w http.ResponseWriter, r *http.Request) {
 	// breakdown would otherwise leak every user's folder name and size.
 	role := middleware.GetRole(r)
 	ownDir := strings.Trim(middleware.GetHomeFolder(r), "/")
+	if h.quotaOf != nil {
+		usage.Quota = h.quotaOf(middleware.GetUsername(r))
+	}
 
 	// Calculate per-user sizes from top-level directories
 	userSizes := make(map[string]int64)

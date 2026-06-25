@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import type { FileItem as FileItemType, ViewMode, Clipboard, TAG_COLORS } from '../types'
-import { listFiles, downloadFile, uploadFiles, createFolder, renameFile, deleteFile, logout, isPreviewable, addQuickAccess, setFolderPrivate, removeFolderPrivate, moveFiles, copyFiles, extractZip, compressFiles, setFileTags, getDiskUsage, getPreviewUrl, setBackupTier } from '../api'
+import { listFiles, downloadFile, uploadFiles, uploadFileChunked, CHUNK_THRESHOLD, createFolder, renameFile, deleteFile, logout, isPreviewable, addQuickAccess, setFolderPrivate, removeFolderPrivate, moveFiles, copyFiles, extractZip, compressFiles, setFileTags, getDiskUsage, getThumbnailUrl, setBackupTier } from '../api'
 import Breadcrumb from './Breadcrumb'
 import Toolbar from './Toolbar'
 import FileIcon from './FileIcon'
@@ -9,6 +9,7 @@ import BulkContextMenu from './BulkContextMenu'
 import UploadZone from './UploadZone'
 import PreviewModal from './PreviewModal'
 import ShareModal from './ShareModal'
+import VersionsModal from './VersionsModal'
 import Sidebar from './Sidebar'
 import UpdateToast from './UpdateToast'
 import ChangelogModal from './ChangelogModal'
@@ -88,6 +89,7 @@ export default function FileExplorer({ initialPath, onLogout }: { initialPath: s
   const [renameValue, setRenameValue] = useState('')
   const [previewFile, setPreviewFile] = useState<FileItemType | null>(null)
   const [shareFile, setShareFile] = useState<FileItemType | null>(null)
+  const [versionsFile, setVersionsFile] = useState<FileItemType | null>(null)
   const [shareSafe, setShareSafe] = useState(false)
   const [showChangelog, setShowChangelog] = useState(false)
   const [showSettings, setShowSettings] = useState(false)
@@ -257,7 +259,7 @@ export default function FileExplorer({ initialPath, onLogout }: { initialPath: s
       const mod = e.ctrlKey || e.metaKey
 
       if (e.key === 'Escape') {
-        if (previewFile || shareFile || showChangelog || showSettings || showTrash || showRecent || showAuditLog) return
+        if (previewFile || shareFile || versionsFile || showChangelog || showSettings || showTrash || showRecent || showAuditLog) return
         if (contextMenu) { setContextMenu(null); return }
         if (clipboard) { setClipboard(null); return }
         if (renaming) { setRenaming(null); return }
@@ -310,16 +312,22 @@ export default function FileExplorer({ initialPath, onLogout }: { initialPath: s
     }
     window.addEventListener('keydown', handler)
     return () => window.removeEventListener('keydown', handler)
-  }, [previewFile, shareFile, showChangelog, showSettings, showTrash, showRecent, showAuditLog, contextMenu, renaming, selectedFiles, clipboard, files, filteredFiles, path])
+  }, [previewFile, shareFile, versionsFile, showChangelog, showSettings, showTrash, showRecent, showAuditLog, contextMenu, renaming, selectedFiles, clipboard, files, filteredFiles, path])
 
   const handleUpload = async (fileList: FileList) => {
     setUploadProgress(0)
     try {
-      await uploadFiles(path, Array.from(fileList), setUploadProgress)
+      const all = Array.from(fileList)
+      // Small files go in one batched request; large files use the chunked,
+      // drop-resilient path one at a time.
+      const small = all.filter((f) => f.size <= CHUNK_THRESHOLD)
+      const large = all.filter((f) => f.size > CHUNK_THRESHOLD)
+      if (small.length) await uploadFiles(path, small, setUploadProgress)
+      for (const f of large) await uploadFileChunked(path, f, setUploadProgress)
       await refresh()
-      toast.success(`Uploaded ${fileList.length} file${fileList.length !== 1 ? 's' : ''}`)
-    } catch {
-      toast.error('Upload failed')
+      toast.success(`Uploaded ${all.length} file${all.length !== 1 ? 's' : ''}`)
+    } catch (e: any) {
+      toast.error(e?.message || 'Upload failed')
     } finally {
       setUploadProgress(null)
     }
@@ -1008,7 +1016,7 @@ export default function FileExplorer({ initialPath, onLogout }: { initialPath: s
                           {!file.isDir && /\.(jpg|jpeg|png|gif|webp|svg|bmp)$/i.test(file.name) ? (
                             <>
                               <img
-                                src={getPreviewUrl(file.path)}
+                                src={getThumbnailUrl(file.path)}
                                 alt=""
                                 className="w-5 h-5 rounded object-cover"
                                 loading="lazy"
@@ -1094,7 +1102,7 @@ export default function FileExplorer({ initialPath, onLogout }: { initialPath: s
                       </svg>
                     ) : /\.(jpg|jpeg|png|gif|webp|svg|bmp)$/i.test(file.name) ? (
                       <img
-                        src={getPreviewUrl(file.path)}
+                        src={getThumbnailUrl(file.path)}
                         alt={file.name}
                         className="w-full h-full object-cover"
                         loading="lazy"
@@ -1227,6 +1235,7 @@ export default function FileExplorer({ initialPath, onLogout }: { initialPath: s
           onMakePrivate={() => handleMakePrivate(contextMenu.file)}
           onMakePublic={() => handleMakePublic(contextMenu.file)}
           onToggleOffsite={() => handleToggleOffsite(contextMenu.file)}
+          onVersions={() => { setVersionsFile(contextMenu.file); setContextMenu(null) }}
           offsiteBackup={contextMenu.file.backupTier === 2}
           isPrivate={contextMenu.file.isPrivate}
           onClose={() => setContextMenu(null)}
@@ -1239,6 +1248,10 @@ export default function FileExplorer({ initialPath, onLogout }: { initialPath: s
 
       {shareFile && (
         <ShareModal file={shareFile} safe={shareSafe} onClose={() => setShareFile(null)} />
+      )}
+
+      {versionsFile && (
+        <VersionsModal path={versionsFile.path} onClose={() => setVersionsFile(null)} onRestored={() => refresh()} />
       )}
 
       {showChangelog && (

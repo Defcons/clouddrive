@@ -104,17 +104,26 @@ func main() {
 	csrfMiddleware := middleware.NewCSRFMiddleware()
 	sharePwLimiter := middleware.NewRateLimiter(10, 5*time.Minute, 15*time.Minute)
 
+	sessionStore := services.NewSessionStore(storageRoot)
+	sessionStore.PruneExpired(handlers.JWTLifetime, time.Now().UnixMilli())
+
 	mfaHandler := handlers.NewMfaHandler(userStore, jwtSecret, auditLog)
-	authHandler := handlers.NewAuthHandler(userStore, jwtSecret, loginLimiter, auditLog, mfaHandler)
+	authHandler := handlers.NewAuthHandler(userStore, jwtSecret, loginLimiter, auditLog, mfaHandler, sessionStore)
 	authMiddleware := middleware.NewAuthMiddleware(jwtSecret, userStore)
+	authMiddleware.SetSessionValidator(sessionStore)
+	versionStore := services.NewVersionStore(storageRoot)
 	fileHandler := handlers.NewFileHandler(storageRoot, permStore, auditLog, trashStore, tagStore, tierStore)
+	fileHandler.SetQuotaLookup(userStore.GetQuota)
+	fileHandler.SetVersionStore(versionStore)
 	diskHandler := handlers.NewDiskHandler(storageRoot)
+	diskHandler.SetQuotaLookup(userStore.GetQuota)
 	shareHandler := handlers.NewShareHandler(storageRoot, permStore, auditLog, sharePwLimiter)
 	versionHandler := handlers.NewVersionHandler()
 	permHandler := handlers.NewPermissionsHandler(permStore, auditLog)
 	auditHandler := handlers.NewAuditHandler(auditLog)
 	trashHandler := handlers.NewTrashHandler(trashStore, auditLog)
 	notifHandler := handlers.NewNotificationHandler(notifStore)
+	adminHandler := handlers.NewAdminHandler(userStore, auditLog)
 	tierHandler := handlers.NewBackupTierHandler(tierStore, permStore, auditLog)
 
 	mux := http.NewServeMux()
@@ -130,7 +139,17 @@ func main() {
 	registerTrashRoutes(mux, trashHandler, authMiddleware, protectedWrite)
 	registerShareRoutes(mux, shareHandler, authMiddleware, protectedWrite)
 	registerNotificationRoutes(mux, notifHandler, authMiddleware, protectedWrite)
+	registerAdminRoutes(mux, adminHandler, authMiddleware, protectedWrite)
 	registerMiscRoutes(mux, auditHandler, tierHandler, diskHandler, versionHandler, authMiddleware, protectedWrite)
+
+	// WebDAV (opt-in): mount the storage as a network drive. Uses Basic Auth
+	// (no MFA), so it's disabled unless explicitly enabled.
+	if os.Getenv("WEBDAV_ENABLED") == "1" {
+		davHandler := handlers.NewWebDAVHandler(storageRoot, userStore)
+		mux.Handle("/webdav/", davHandler)
+		mux.Handle("/webdav", davHandler)
+		slog.Info("WebDAV enabled at /webdav")
+	}
 
 	staticFS, err := fs.Sub(staticFiles, "static")
 	if err != nil {
@@ -208,6 +227,8 @@ func registerAuthRoutes(mux *http.ServeMux, h *handlers.AuthHandler, auth *middl
 	mux.HandleFunc("GET /api/auth/check", auth.Wrap(h.Check))
 	mux.HandleFunc("POST /api/auth/change-password", protectedWrite(h.ChangePassword))
 	mux.HandleFunc("GET /api/csrf", auth.Wrap(csrf.GetToken))
+	mux.HandleFunc("GET /api/auth/sessions", auth.Wrap(h.Sessions))
+	mux.HandleFunc("POST /api/auth/sessions/revoke", protectedWrite(h.RevokeSession))
 }
 
 func registerMfaRoutes(mux *http.ServeMux, h *handlers.MfaHandler, auth *handlers.AuthHandler, am *middleware.AuthMiddleware, limiter *middleware.RateLimiter, protectedWrite func(http.HandlerFunc) http.HandlerFunc) {
@@ -226,10 +247,17 @@ func registerFileRoutes(mux *http.ServeMux, h *handlers.FileHandler, auth *middl
 	mux.HandleFunc("GET /api/files", auth.Wrap(h.List))
 	mux.HandleFunc("GET /api/files/download", auth.Wrap(h.Download))
 	mux.HandleFunc("GET /api/files/preview", auth.Wrap(h.Preview))
+	mux.HandleFunc("GET /api/files/thumbnail", auth.Wrap(h.Thumbnail))
+	mux.HandleFunc("GET /api/files/versions", auth.Wrap(h.Versions))
+	mux.HandleFunc("GET /api/files/versions/download", auth.Wrap(h.DownloadVersion))
+	mux.HandleFunc("POST /api/files/versions/restore", protectedWrite(h.RestoreVersion))
 	mux.HandleFunc("GET /api/files/search", auth.Wrap(h.Search))
 	mux.HandleFunc("GET /api/files/recent", auth.Wrap(h.Recent))
 	mux.HandleFunc("GET /api/files/tags", auth.Wrap(h.GetTags))
 	mux.HandleFunc("POST /api/files/upload", protectedWrite(h.Upload))
+	mux.HandleFunc("POST /api/files/upload/chunk", protectedWrite(h.UploadChunk))
+	mux.HandleFunc("GET /api/files/upload/status", auth.Wrap(h.UploadStatus))
+	mux.HandleFunc("POST /api/files/upload/complete", protectedWrite(h.UploadComplete))
 	mux.HandleFunc("POST /api/files/mkdir", protectedWrite(h.Mkdir))
 	mux.HandleFunc("POST /api/files/rename", protectedWrite(h.Rename))
 	mux.HandleFunc("POST /api/files/move", protectedWrite(h.Move))
@@ -272,6 +300,13 @@ func registerNotificationRoutes(mux *http.ServeMux, h *handlers.NotificationHand
 	mux.HandleFunc("GET /api/notifications", auth.Wrap(h.GetAll))
 	mux.HandleFunc("GET /api/notifications/unread", auth.Wrap(h.GetUnreadCount))
 	mux.HandleFunc("POST /api/notifications/read", protectedWrite(h.MarkRead))
+}
+
+func registerAdminRoutes(mux *http.ServeMux, h *handlers.AdminHandler, auth *middleware.AuthMiddleware, protectedWrite func(http.HandlerFunc) http.HandlerFunc) {
+	mux.HandleFunc("GET /api/admin/users", auth.Wrap(h.ListUsers))
+	mux.HandleFunc("POST /api/admin/users", protectedWrite(h.CreateUser))
+	mux.HandleFunc("POST /api/admin/users/update", protectedWrite(h.UpdateUser))
+	mux.HandleFunc("DELETE /api/admin/users", protectedWrite(h.DeleteUser))
 }
 
 func registerMiscRoutes(mux *http.ServeMux, audit *handlers.AuditHandler, tier *handlers.BackupTierHandler, disk *handlers.DiskHandler, version *handlers.VersionHandler, auth *middleware.AuthMiddleware, protectedWrite func(http.HandlerFunc) http.HandlerFunc) {
