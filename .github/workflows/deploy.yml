@@ -5,6 +5,10 @@ on:
   push:
     branches:
       - master
+  # Manual trigger — lets a deploy be verified deliberately instead of having to
+  # push a dummy commit. Added 2026-07-30 alongside the move to a forced-command
+  # deploy key (see homelab-config/security/SECURITY.md §5.4).
+  workflow_dispatch:
 
 concurrency:
   group: deploy
