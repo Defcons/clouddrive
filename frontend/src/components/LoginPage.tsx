@@ -167,7 +167,7 @@ export default function LoginPage({ onLogin }: { onLogin: () => void }) {
               onChange={(e) => setTrustDevice(e.target.checked)}
               className="w-4 h-4"
             />
-            Trust this device for 30 days
+            Trust this device for 90 days
           </label>
 
           <button
