@@ -244,9 +244,9 @@ func (h *MfaHandler) Challenge(auth *AuthHandler) http.HandlerFunc {
 // ---- Trusted device cookie ----
 
 // trustedDeviceCookieName is set on successful MFA challenge (when user
-// checks "Trust this device"). Presence + validity means skip MFA for 30 days.
+// checks "Trust this device"). Presence + validity means skip MFA for 90 days.
 const trustedDeviceCookieName = "clouddrive_trusted_device"
-const trustedDeviceLifetime = 30 * 24 * time.Hour
+const trustedDeviceLifetime = 90 * 24 * time.Hour
 
 // issueTrustedDeviceCookie mints a signed JWT tying this browser to this user.
 // The cookie is path-scoped to / so it's included on login POSTs. It's

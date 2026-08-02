@@ -160,7 +160,7 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// If MFA is enabled, we either:
-	//   (a) have a valid trusted-device cookie from the last 30 days → skip MFA
+	//   (a) have a valid trusted-device cookie from the last 90 days → skip MFA
 	//   (b) return mfa_required + mfa_token so client can submit TOTP next
 	if user.MfaEnabled {
 		if h.mfa != nil && h.mfa.HasValidTrustedDevice(r, user.Username, user.PwVersion) {
