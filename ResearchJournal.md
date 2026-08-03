@@ -3,7 +3,7 @@
 <!--
   Append-only chronological log: how we learned what we know. The HISTORY.
   Never rewrite old entries. Promote durable facts to KnowledgeBase.md.
-  Navigation → CodeMap.md · model → KnowledgeBase.md. Cross-link, don't copy.
+  Navigation → OrientationMap.md · model → KnowledgeBase.md. Cross-link, don't copy.
 -->
 
 _Last verified: 2026-08-03 @ 14b9eb5 — by Claude (Opus 4.8), triad seed._
