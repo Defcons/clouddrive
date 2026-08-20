@@ -110,6 +110,36 @@ func TestBackupTierListAdminOnly(t *testing.T) {
 	}
 }
 
+// Regression: Compress must Base() its output name so a non-admin can't write
+// the archive outside the target dir (cross-tenant or out of STORAGE_ROOT) via
+// "../" in req.Name.
+func TestCompressNameCannotTraverse(t *testing.T) {
+	root := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(root, "alice"), 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "alice", "a.txt"), []byte("hi"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(root, "bob"), 0755); err != nil {
+		t.Fatal(err)
+	}
+
+	h := NewFileHandler(root, nil, nil, nil, nil, nil)
+	body := `{"paths":["/alice/a.txt"],"name":"../bob/evil.zip"}`
+	rec := serve(h.Compress, http.MethodPost, "/api/files/compress", body,
+		sessionToken(t, "alice", "user", "/alice"))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("compress: got %d, want 200; body=%s", rec.Code, rec.Body.String())
+	}
+	if _, err := os.Stat(filepath.Join(root, "bob", "evil.zip")); !os.IsNotExist(err) {
+		t.Error("archive escaped into another user's home via ../ in name")
+	}
+	if _, err := os.Stat(filepath.Join(root, "alice", "evil.zip")); err != nil {
+		t.Errorf("archive should be created as a basename in alice's home: %v", err)
+	}
+}
+
 func TestDiskUsagePerUserScopedToNonAdmin(t *testing.T) {
 	root := t.TempDir()
 	for _, u := range []string{"Alice", "Bob"} {

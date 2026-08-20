@@ -65,7 +65,7 @@ func (h *FileHandler) RestoreVersion(w http.ResponseWriter, r *http.Request) {
 		Path string `json:"path"`
 		ID   string `json:"id"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+	if err := decodeJSON(w, r, &req); err != nil {
 		http.Error(w, "Invalid request", http.StatusBadRequest)
 		return
 	}

@@ -55,6 +55,13 @@ func dirSize(path string) int64 {
 	return total
 }
 
+// decodeJSON reads and decodes a JSON request body under a hard 1 MiB cap, so a
+// huge body can't be buffered into memory (the JSON requests here are all tiny).
+func decodeJSON(w http.ResponseWriter, r *http.Request, dst any) error {
+	r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
+	return json.NewDecoder(r.Body).Decode(dst)
+}
+
 type FileInfo struct {
 	Name       string   `json:"name"`
 	Path       string   `json:"path"`
@@ -125,20 +132,11 @@ func NewFileHandler(root string, permStore *services.PermissionStore, audit *ser
 	}
 }
 
-// getClientIP extracts the client IP, preferring the left-most
-// X-Forwarded-For value (closest to the real client). Returns raw RemoteAddr
-// if no proxy headers are set.
+// getClientIP returns the caller's IP using the same trusted-proxy rules as the
+// rate limiter, so audit-log IPs can't be spoofed via a client-supplied
+// X-Forwarded-For / X-Real-IP. See middleware.RealIP.
 func getClientIP(r *http.Request) string {
-	if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
-		if comma := strings.Index(xff, ","); comma >= 0 {
-			return strings.TrimSpace(xff[:comma])
-		}
-		return strings.TrimSpace(xff)
-	}
-	if xri := r.Header.Get("X-Real-IP"); xri != "" {
-		return xri
-	}
-	return r.RemoteAddr
+	return middleware.RealIP(r)
 }
 
 // safePath resolves reqPath and ensures it stays within the storage root.
@@ -552,7 +550,7 @@ func (h *FileHandler) Mkdir(w http.ResponseWriter, r *http.Request) {
 		Path string `json:"path"`
 		Name string `json:"name"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+	if err := decodeJSON(w, r, &req); err != nil {
 		http.Error(w, "Invalid request", http.StatusBadRequest)
 		return
 	}
@@ -592,7 +590,7 @@ func (h *FileHandler) Rename(w http.ResponseWriter, r *http.Request) {
 		OldPath string `json:"oldPath"`
 		NewName string `json:"newName"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+	if err := decodeJSON(w, r, &req); err != nil {
 		http.Error(w, "Invalid request", http.StatusBadRequest)
 		return
 	}
@@ -806,7 +804,7 @@ func (h *FileHandler) Move(w http.ResponseWriter, r *http.Request) {
 		Paths       []string `json:"paths"`
 		Destination string   `json:"destination"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+	if err := decodeJSON(w, r, &req); err != nil {
 		http.Error(w, "Invalid request", http.StatusBadRequest)
 		return
 	}
@@ -853,7 +851,7 @@ func (h *FileHandler) Copy(w http.ResponseWriter, r *http.Request) {
 		Paths       []string `json:"paths"`
 		Destination string   `json:"destination"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+	if err := decodeJSON(w, r, &req); err != nil {
 		http.Error(w, "Invalid request", http.StatusBadRequest)
 		return
 	}
@@ -1027,7 +1025,7 @@ func (h *FileHandler) Extract(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		Path string `json:"path"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+	if err := decodeJSON(w, r, &req); err != nil {
 		http.Error(w, "Invalid request", http.StatusBadRequest)
 		return
 	}
@@ -1057,8 +1055,27 @@ func (h *FileHandler) Extract(w http.ResponseWriter, r *http.Request) {
 	}
 	defer reader.Close()
 
+	// Cap total extracted bytes so a small "zip bomb" can't inflate to fill the
+	// shared data volume, and honour the caller's quota. maxUploadBytes() is the
+	// absolute ceiling; a quota'd user is additionally bounded by their quota.
+	maxTotal := maxUploadBytes()
+	var quotaCap, homeUsed int64
+	if h.quotaOf != nil {
+		quotaCap = h.quotaOf(middleware.GetUsername(r))
+	}
+	if quotaCap > 0 {
+		home := middleware.GetHomeFolder(r)
+		if home == "" {
+			home = "/"
+		}
+		if homeAbs, herr := h.safePath(home); herr == nil {
+			homeUsed = dirSize(homeAbs)
+		}
+	}
+
 	cleanDest := filepath.Clean(destDir) + string(filepath.Separator)
 	extracted := 0
+	var written int64
 	for _, f := range reader.File {
 		fpath := filepath.Join(destDir, f.Name)
 		cleaned := filepath.Clean(fpath)
@@ -1082,9 +1099,26 @@ func (h *FileHandler) Extract(w http.ResponseWriter, r *http.Request) {
 			outFile.Close()
 			continue
 		}
-		io.Copy(outFile, rc)
+		// Bound this entry to the remaining budget; copy one extra byte so an
+		// archive that exceeds the ceiling is detected and rejected.
+		remaining := maxTotal - written
+		if quotaCap > 0 {
+			if q := quotaCap - homeUsed - written; q < remaining {
+				remaining = q
+			}
+		}
+		if remaining < 0 {
+			remaining = 0
+		}
+		n, cerr := io.Copy(outFile, io.LimitReader(rc, remaining+1))
 		rc.Close()
 		outFile.Close()
+		written += n
+		if cerr != nil || n > remaining {
+			os.Remove(fpath)
+			http.Error(w, "Archive too large to extract", http.StatusRequestEntityTooLarge)
+			return
+		}
 		extracted++
 	}
 
@@ -1101,7 +1135,7 @@ func (h *FileHandler) Compress(w http.ResponseWriter, r *http.Request) {
 		Paths []string `json:"paths"`
 		Name  string   `json:"name"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+	if err := decodeJSON(w, r, &req); err != nil {
 		http.Error(w, "Invalid request", http.StatusBadRequest)
 		return
 	}
@@ -1118,8 +1152,12 @@ func (h *FileHandler) Compress(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	zipName := req.Name
-	if zipName == "" {
+	// Only the basename — never let req.Name traverse out of the target dir
+	// (e.g. "../other-home/x.zip" or "../../../tmp/x.zip"). Every other write
+	// handler Base()s its filename; Compress must too, or it's an arbitrary
+	// cross-tenant / out-of-root *.zip write.
+	zipName := filepath.Base(req.Name)
+	if zipName == "" || zipName == "." || zipName == string(filepath.Separator) {
 		zipName = "archive.zip"
 	}
 	if !strings.HasSuffix(zipName, ".zip") {
@@ -1200,7 +1238,7 @@ func (h *FileHandler) SetTags(w http.ResponseWriter, r *http.Request) {
 		Path string   `json:"path"`
 		Tags []string `json:"tags"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+	if err := decodeJSON(w, r, &req); err != nil {
 		http.Error(w, "Invalid request", http.StatusBadRequest)
 		return
 	}

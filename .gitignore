@@ -24,3 +24,10 @@ credentials.json
 *.sqlite
 *.sqlite3
 *.db
+
+# Runtime data dir + user store — bcrypt hashes, TOTP/MFA seeds, sessions, audit
+# log. Default STORAGE_ROOT is ./data, so a local `go run` in backend/ creates
+# backend/data/users.json. This repo is public — never commit any of it.
+data/
+backend/data/
+users.json

@@ -148,13 +148,19 @@ func (s *VersionStore) RestoreVersion(webPath, id, currentAbsPath string) error 
 		return err
 	}
 	dir := s.keyDir(webPath)
+	// Snapshot the current file first so a restore is itself undoable.
 	if _, err := os.Stat(currentAbsPath); err == nil {
 		newID := strconv.FormatInt(time.Now().UnixNano(), 10)
-		if err := copyFileTo(currentAbsPath, filepath.Join(dir, newID+".bin")); err == nil {
-			s.pruneLocked(dir)
-		}
+		_ = copyFileTo(currentAbsPath, filepath.Join(dir, newID+".bin"))
 	}
-	return copyFileTo(src, currentAbsPath)
+	// Restore BEFORE pruning. If src is the oldest version and the snapshot above
+	// pushed the count over the cap, pruning would delete src (the very bytes we
+	// are restoring) and the copy would fail ENOENT. Copy first, prune last.
+	if err := copyFileTo(src, currentAbsPath); err != nil {
+		return err
+	}
+	s.pruneLocked(dir)
+	return nil
 }
 
 // pruneLocked keeps only the newest maxVersionsPerFile .bin files in dir.
