@@ -45,17 +45,24 @@ deploy/frontend/DoS). Every item below was personally re-read in source before l
 - [x] **M4 (FIXED) — CI actions on floating tags hold the deploy key.** `.github/workflows/deploy.yml:24,32`
   (`tailscale/github-action@v3`, `appleboy/ssh-action@v1`). A compromised action release runs in the
   job holding `DEPLOY_SSH_KEY` + Tailscale secrets → root on the live homelab. Fix: pin to commit SHAs.
-- [ ] **M5 — Syncthing GUI exposed.** `docker-compose.yml:22` publishes `8384` on `0.0.0.0`; the
+- [x] **M5 (FIXED) — Syncthing GUI exposed.** `docker-compose.yml:22` publishes `8384` on `0.0.0.0`; the
   official image serves the GUI with no password until one is set → any LAN/Tailscale peer controls
   sync of `/data`. Fix: `"127.0.0.1:8384:8384"`.
-- [ ] **M6 — clouddrive container runs as root + broad `/data` mount.** `Dockerfile` (no `USER`,
+- [ ] **M6 — clouddrive container runs as root + broad `/data` mount.** Implemented on branch
+  `security/audit-round6-m6-nonroot` (runs as uid/gid 1000 to match Syncthing's PUID/PGID on the shared
+  `/data`). MERGE ONLY AFTER running `chown -R 1000:1000 /data` on the host — otherwise the non-root app
+  can't write files clouddrive previously created as root and the container fails. See its PR. `Dockerfile` (no `USER`,
   final stage) + `docker-compose.yml:9`. Amplifies any write bug (incl. H1) to host-root. The static
   `CGO_ENABLED=0` binary needs no root. Fix: `adduser` + `USER`.
 - [x] **M7 (FIXED, + `.dockerignore` L7 part) — `.gitignore` misses `data/` and `users.json` (public repo).** Default STORAGE_ROOT is
   `./data`; a local `go run` writes `backend/data/users.json` (bcrypt hashes + TOTP seeds). Currently
   nothing sensitive is tracked, but a stray `git add -A` would publish it permanently. Fix: add
   `data/`, `backend/data/`, `users.json` (and mirror in `.dockerignore`).
-- [ ] **M8 — Off-quota dotdir accumulation.** `.trash`/`.versions` live at STORAGE_ROOT, excluded
+- [~] **M8 (PARTIAL) — Off-quota dotdir accumulation.** Runtime `CleanExpired`/`PruneExpired`/upload-sweep
+  now run hourly (round-6 maintenance ticker), so the 30-day trash guarantee holds without a restart.
+  STILL OPEN: counting `.trash`/`.versions` bytes toward the user's quota (closes the delete→refill
+  parking trick) — deferred because the dotdirs are keyed globally, so per-user attribution + a
+  free-space semantics decision are needed first. `.trash`/`.versions` live at STORAGE_ROOT, excluded
   from `dirSize(home)`; `TrashStore.CleanExpired` runs only at startup (`main.go:101`). delete→refill
   cycles park N×quota off-quota for up to 30 days (or until restart). Fix: count them toward quota
   and/or run `CleanExpired` on a ticker.
@@ -63,7 +70,7 @@ deploy/frontend/DoS). Every item below was personally re-read in source before l
   the OLDEST of 10 versions snapshots the current file (→11), `pruneLocked` deletes the oldest (= the
   `src` being restored), then `copyFileTo(src,…)` fails ENOENT: the requested version is destroyed and
   the restore doesn't happen. Fix: copy `src` out before the snapshot+prune.
-- [ ] **M10 — No `ReadTimeout`/`WriteTimeout` on `http.Server`.** `main.go:194` sets only
+- [x] **M10 (FIXED — bounded `ReadTimeout` 15m; `WriteTimeout` deliberately off so streaming down/zips aren't truncated. Per-route deadlines = fuller fix, deferred) — No `ReadTimeout`/`WriteTimeout` on `http.Server`.** `main.go:194` sets only
   ReadHeaderTimeout + IdleTimeout → slow-body/slow-read holds a goroutine per connection indefinitely.
   Fix: conservative Read/WriteTimeout (or handler deadlines for streaming download/zip paths).
 - [x] **M11 (FIXED) — JSON bodies decoded without `MaxBytesReader`.** Mkdir/Rename/Move/Copy/Extract/Compress/
@@ -76,6 +83,12 @@ deploy/frontend/DoS). Every item below was personally re-read in source before l
   locked-out entry early; L4 the share-auth cookie stores a derived value, not the plaintext password
   (`TestSharePasswordCookieIsDerived`); L5 the public directory-zip endpoint is per-IP rate-limited
   (`shareDownloadLimiter`). Still open: L2, L3, L6, L7 (base-image pinning / compose hardening), L8.
+- [x] **Fixed on branch `security/audit-round6-hardening`: L2, L3, L6 + M5, M10, M8-partial + L7 compose/
+  workflow hardening.** L2 hourly maintenance ticker (trash/sessions/uploads); L3 audit log rotates at
+  5 MiB to `.audit.log.1` and `GetRecent` reads both generations, bounded (`TestAuditLogRotation`); L6
+  deleted the dead `UserStore.save()`. STILL OPEN: L7 base-image DIGEST pinning (needs a registry/docker
+  to resolve — deferred); L8 PDF-iframe `sandbox` (SKIPPED — already neutralized by the global `nosniff`;
+  sandboxing risks breaking the PDF viewer for no real gain).
 - [ ] L1 rate-limiter `cleanup` lifts lockout early when `lockout>2*window` (both limiters are;
   `ratelimit.go:49`). L2 sessions pruned only at startup (growth + stale "active sessions"). L3 audit
   log unbounded + `GetRecent` reads whole file under the write lock (`auditlog.go:66`). L4 share

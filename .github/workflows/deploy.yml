@@ -10,6 +10,10 @@ on:
   # deploy key (see homelab-config/security/SECURITY.md §5.4).
   workflow_dispatch:
 
+# The deploy needs no GITHUB_TOKEN scopes (it fetches over anonymous HTTPS on the
+# server), so start from zero and grant nothing.
+permissions: {}
+
 concurrency:
   group: deploy
   cancel-in-progress: true
