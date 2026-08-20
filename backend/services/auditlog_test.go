@@ -43,3 +43,26 @@ func TestAuditLogDegradesSafely(t *testing.T) {
 		t.Errorf("expected nil entries from a disabled logger, got %v", got)
 	}
 }
+
+func TestAuditLogRotation(t *testing.T) {
+	root := t.TempDir()
+	// Shrink the cap so a handful of entries triggers a rotation; restore after.
+	orig := maxAuditBytes
+	maxAuditBytes = 200
+	defer func() { maxAuditBytes = orig }()
+
+	a := NewAuditLogger(root)
+	defer a.Close()
+	for i := 0; i < 20; i++ {
+		a.Log("TEST", "user", "1.2.3.4", "an audit entry")
+	}
+
+	// Crossing the cap rotates the active log to <path>.1.
+	if _, err := os.Stat(filepath.Join(root, ".audit.log.1")); err != nil {
+		t.Fatalf("expected rotated .audit.log.1 to exist: %v", err)
+	}
+	// The logger keeps working and GetRecent still returns bounded results.
+	if got := a.GetRecent(5); len(got) == 0 {
+		t.Error("GetRecent returned nothing after rotation")
+	}
+}
