@@ -25,7 +25,7 @@ services:
       - no-new-privileges:true
     hostname: clouddrive-server
     ports:
-      - "127.0.0.1:8384:8384"    # Syncthing Web UI — loopback only; SSH-tunnel or Tailscale to the host to reach it
+      - "8384:8384"    # Syncthing Web UI — SECURE IT WITH A GUI PASSWORD (Syncthing Settings → GUI), not by restricting the bind (loopback-only broke terminal-only admin access)
       - "22000:22000/tcp"  # Sync protocol (TCP)
       - "22000:22000/udp"  # Sync protocol (QUIC)
       - "21027:21027/udp"  # Discovery

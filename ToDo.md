@@ -45,7 +45,11 @@ deploy/frontend/DoS). Every item below was personally re-read in source before l
 - [x] **M4 (FIXED) — CI actions on floating tags hold the deploy key.** `.github/workflows/deploy.yml:24,32`
   (`tailscale/github-action@v3`, `appleboy/ssh-action@v1`). A compromised action release runs in the
   job holding `DEPLOY_SSH_KEY` + Tailscale secrets → root on the live homelab. Fix: pin to commit SHAs.
-- [x] **M5 (FIXED) — Syncthing GUI exposed.** `docker-compose.yml:22` publishes `8384` on `0.0.0.0`; the
+- [x] **M5 (RESOLVED via GUI password, not bind) — Syncthing GUI exposed.** The loopback-only bind was
+  REVERTED (2026-08-20): it broke the operator's terminal-only (Proxmox root → `pct enter`) access, and
+  the real weakness was "no password," not "reachable". Fix is a Syncthing GUI user+password set on the
+  host (bcrypt hash in `/opt/syncthing-config/config.xml` `<gui>`, or the Settings→GUI panel). Port is
+  back to `8384:8384`. `docker-compose.yml:22` publishes `8384` on `0.0.0.0`; the
   official image serves the GUI with no password until one is set → any LAN/Tailscale peer controls
   sync of `/data`. Fix: `"127.0.0.1:8384:8384"`.
 - [ ] **M6 — clouddrive container runs as root + broad `/data` mount.** Implemented on branch
