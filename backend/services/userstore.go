@@ -89,23 +89,6 @@ func (s *UserStore) load() error {
 	return nil
 }
 
-func (s *UserStore) save() error {
-	s.mu.RLock()
-	config := models.UsersConfig{Users: s.users}
-	s.mu.RUnlock()
-
-	data, err := json.MarshalIndent(config, "", "  ")
-	if err != nil {
-		return err
-	}
-
-	tmpPath := s.configPath + ".tmp"
-	if err := os.WriteFile(tmpPath, data, 0600); err != nil {
-		return err
-	}
-	return os.Rename(tmpPath, s.configPath)
-}
-
 // dummyHash is a valid bcrypt hash (at DefaultCost) of a random string. It's
 // compared against when the username doesn't exist so the login response time
 // matches the user-exists path, preventing username enumeration via timing.

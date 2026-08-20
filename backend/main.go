@@ -198,7 +198,13 @@ func main() {
 		Addr:              ":" + port,
 		Handler:           handler,
 		ReadHeaderTimeout: 10 * time.Second,
-		IdleTimeout:       120 * time.Second,
+		// ReadTimeout bounds slow-body (slowloris) requests — generous enough for
+		// large chunk uploads over a LAN/Tailscale link. WriteTimeout is left unset
+		// on purpose: downloads and on-the-fly zips stream arbitrarily large bodies,
+		// and a global write deadline would truncate them (per-route deadlines are
+		// the fuller fix).
+		ReadTimeout: 15 * time.Minute,
+		IdleTimeout: 120 * time.Second,
 	}
 
 	// Graceful shutdown
@@ -213,6 +219,19 @@ func main() {
 			slog.Warn("graceful shutdown failed", "err", err)
 		}
 		auditLog.Close()
+	}()
+
+	// Periodic maintenance so a long-uptime server reclaims expired state at
+	// runtime, not only at startup: age out 30-day trash, prune expired sessions,
+	// and sweep abandoned resumable-upload staging.
+	go func() {
+		ticker := time.NewTicker(time.Hour)
+		defer ticker.Stop()
+		for range ticker.C {
+			trashStore.CleanExpired()
+			sessionStore.PruneExpired(handlers.JWTLifetime, time.Now().UnixMilli())
+			fileHandler.CleanStaleUploads(24 * time.Hour)
+		}
 	}()
 
 	slog.Info("CloudDrive starting", "port", port, "storage", storageRoot)

@@ -3,6 +3,10 @@ services:
     build: .
     container_name: clouddrive
     restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
     ports:
       - "8080:8080"
     volumes:
@@ -17,9 +21,11 @@ services:
     image: syncthing/syncthing:latest
     container_name: syncthing
     restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
     hostname: clouddrive-server
     ports:
-      - "8384:8384"    # Syncthing Web UI
+      - "127.0.0.1:8384:8384"    # Syncthing Web UI — loopback only; SSH-tunnel or Tailscale to the host to reach it
       - "22000:22000/tcp"  # Sync protocol (TCP)
       - "22000:22000/udp"  # Sync protocol (QUIC)
       - "21027:21027/udp"  # Discovery
