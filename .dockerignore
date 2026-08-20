@@ -4,3 +4,13 @@ frontend/dist
 backend/static
 .git
 *.md
+
+# Never send secrets or runtime data into the build context
+.env
+.env.*
+!.env.example
+data/
+backend/data/
+users.json
+*.key
+*.pem

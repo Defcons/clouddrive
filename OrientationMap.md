@@ -1,4 +1,4 @@
-# CodeMap — CloudDrive
+# OrientationMap — CloudDrive
 
 <!--
   A THIN, POINTER-BASED index of this codebase. Read first, update after changes.
@@ -7,7 +7,7 @@
   Feature detail already lives in FEATURES.md; hardening saga in IMPROVEMENTS.md — link, don't copy.
 -->
 
-_Last verified: 2026-08-03 @ 14b9eb5 — seeded triad (docs only; no code change)._
+_Last verified: 2026-08-19 @ aa0100f — audit round 5 (branch `security/audit-round5-fixes`): traversal/DoS fixes + new invariants below._
 
 ## What this is
 Self-hosted single-binary personal cloud / file explorer for the homelab. A Go 1.22 HTTP
@@ -35,6 +35,9 @@ Entry point: `backend/main.go`. Data lives under `STORAGE_ROOT` (a mounted volum
 - **env-fail-fast**: `JWT_SECRET` must be set, ≥32 chars, not the old default, or the server refuses to start. Weak/placeholder `CLOUDDRIVE_PASS` only warns.
 - **webdav-opt-in**: `/webdav` mounts only when `WEBDAV_ENABLED=1`. It uses HTTP Basic Auth and **bypasses MFA** (protocol limit) — HTTPS only.
 - **trusted-proxy**: only peers in `TRUSTED_PROXIES` may set `X-Forwarded-For` / `X-Real-IP`; otherwise the rate limiter uses the direct connection IP (prevents header-spoofed bypass).
+- **realip-unified**: handlers get the client IP for audit-log / session records via `middleware.RealIP` — the SAME trusted-proxy logic as the rate limiter's `getIP`. Never read raw `X-Forwarded-For`/`X-Real-IP` in a handler (that was spoofable; fixed round 5). `handlers.clientIP` / `handlers.getClientIP` are thin wrappers over it.
+- **write-name-base**: every handler that creates a file from a client-supplied name MUST `filepath.Base` it before joining to the target dir (Upload, Mkdir, Rename, chunked UploadComplete, **Compress**). `Compress` was the lone gap — an arbitrary cross-tenant / out-of-root `*.zip` write — fixed round 5 (`TestCompressNameCannotTraverse`).
+- **resource-caps**: request-driven work is bounded — JSON bodies via `decodeJSON` (1 MiB), whole-file uploads via `maxUploadBytes()` (single POST **and** chunked assembly **and** `Extract` output), image thumbnails via `maxThumbPixels` (`image.DecodeConfig` before `image.Decode`). Add the matching cap when you add a new request-sized operation.
 
 ## Contracts between modules
 - **frontend → backend**: `npm run build` emits `frontend/dist/`; the Dockerfile copies it into `backend/static/` which the Go binary embeds and serves. The checked-in `backend/static/.gitkeep` is the only tracked file there (`static/*` is gitignored) — the real assets exist only in the built image.

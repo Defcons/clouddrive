@@ -126,6 +126,14 @@ func getIP(r *http.Request) string {
 	return peer
 }
 
+// RealIP returns the client IP using the same trusted-proxy rules as the rate
+// limiter (X-Forwarded-For / X-Real-IP honoured only when the direct peer is a
+// configured TRUSTED_PROXIES address). Handlers use this for audit-log and
+// session IPs so a client can't spoof them by setting the header directly.
+func RealIP(r *http.Request) string {
+	return getIP(r)
+}
+
 // Check returns true if the request is allowed, false if rate limited
 func (rl *RateLimiter) Check(r *http.Request) bool {
 	ip := getIP(r)
