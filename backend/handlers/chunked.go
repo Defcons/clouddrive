@@ -11,10 +11,11 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"time"
 )
 
-// maxChunkBytes caps a single uploaded chunk (the whole-file cap is enforced at
-// assembly time against the quota / MAX_UPLOAD_BYTES).
+// maxChunkBytes caps a single uploaded chunk. The whole-file cap is enforced at
+// assembly time in UploadComplete (against MAX_UPLOAD_BYTES and the quota).
 const maxChunkBytes = 64 << 20
 
 var uploadIDRe = regexp.MustCompile(`^[A-Za-z0-9_-]{8,64}$`)
@@ -139,7 +140,7 @@ func (h *FileHandler) UploadComplete(w http.ResponseWriter, r *http.Request) {
 		Path     string `json:"path"`
 		Total    int    `json:"total"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+	if err := decodeJSON(w, r, &req); err != nil {
 		http.Error(w, "Invalid request", http.StatusBadRequest)
 		return
 	}
@@ -179,6 +180,14 @@ func (h *FileHandler) UploadComplete(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		assembled += info.Size()
+	}
+
+	// Hard ceiling on the assembled size, independent of quota (default quota is
+	// 0 = unlimited, so without this a user could assemble an arbitrarily large
+	// file from many 64 MiB chunks and fill the disk).
+	if assembled > maxUploadBytes() {
+		http.Error(w, "File exceeds the maximum upload size", http.StatusRequestEntityTooLarge)
+		return
 	}
 
 	// Quota check on the assembled size.
@@ -242,4 +251,27 @@ func (h *FileHandler) UploadComplete(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(map[string]any{"uploaded": name, "size": assembled})
+}
+
+// CleanStaleUploads removes chunk-staging dirs older than maxAge whose upload was
+// never completed (UploadComplete removes them on success). Call at startup so
+// abandoned or failed resumable uploads don't accumulate in .uploads forever.
+func (h *FileHandler) CleanStaleUploads(maxAge time.Duration) {
+	entries, err := os.ReadDir(h.uploadDir)
+	if err != nil {
+		return
+	}
+	cutoff := time.Now().Add(-maxAge)
+	for _, e := range entries {
+		if !e.IsDir() {
+			continue
+		}
+		info, ierr := e.Info()
+		if ierr != nil {
+			continue
+		}
+		if info.ModTime().Before(cutoff) {
+			_ = os.RemoveAll(filepath.Join(h.uploadDir, e.Name()))
+		}
+	}
 }

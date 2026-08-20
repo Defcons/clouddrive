@@ -115,6 +115,7 @@ func main() {
 	fileHandler := handlers.NewFileHandler(storageRoot, permStore, auditLog, trashStore, tagStore, tierStore)
 	fileHandler.SetQuotaLookup(userStore.GetQuota)
 	fileHandler.SetVersionStore(versionStore)
+	fileHandler.CleanStaleUploads(24 * time.Hour) // GC abandoned resumable-upload staging
 	diskHandler := handlers.NewDiskHandler(storageRoot)
 	diskHandler.SetQuotaLookup(userStore.GetQuota)
 	shareHandler := handlers.NewShareHandler(storageRoot, permStore, auditLog, sharePwLimiter)

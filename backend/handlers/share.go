@@ -178,7 +178,7 @@ func (h *ShareHandler) Create(w http.ResponseWriter, r *http.Request) {
 		Mode      string `json:"mode"`
 		ExpiresIn int    `json:"expiresIn"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+	if err := decodeJSON(w, r, &req); err != nil {
 		http.Error(w, "Invalid request", http.StatusBadRequest)
 		return
 	}
@@ -291,7 +291,7 @@ func (h *ShareHandler) Revoke(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		Token string `json:"token"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+	if err := decodeJSON(w, r, &req); err != nil {
 		http.Error(w, "Invalid request", http.StatusBadRequest)
 		return
 	}
