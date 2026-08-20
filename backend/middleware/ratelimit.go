@@ -46,6 +46,13 @@ func (rl *RateLimiter) cleanup() {
 
 	now := time.Now()
 	for key, att := range rl.attempts {
+		// Don't evict an entry still serving a lockout. Its lastTry is frozen at
+		// lockout start (Check returns before refreshing it), so window*2 can
+		// elapse mid-lockout — evicting here would recreate the entry fresh on the
+		// next request and lift the lockout early.
+		if !att.lockedAt.IsZero() && now.Sub(att.lockedAt) < rl.lockout {
+			continue
+		}
 		if now.Sub(att.lastTry) > rl.window*2 {
 			delete(rl.attempts, key)
 		}

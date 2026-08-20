@@ -5,6 +5,7 @@ import (
 	"clouddrive/middleware"
 	"clouddrive/services"
 	"crypto/rand"
+	"crypto/sha256"
 	"crypto/subtle"
 	"encoding/hex"
 	"encoding/json"
@@ -45,6 +46,7 @@ type ShareHandler struct {
 	mu        sync.RWMutex
 	audit     *services.AuditLogger
 	pwLimiter ShareRateLimiter
+	dlLimiter ShareRateLimiter // optional: throttles the public directory-zip endpoint per IP
 	permStore *services.PermissionStore
 }
 
@@ -61,6 +63,11 @@ func NewShareHandler(root string, permStore *services.PermissionStore, audit *se
 	h.cleanExpired()
 	return h
 }
+
+// SetDownloadLimiter wires an optional per-IP limiter for the expensive public
+// directory-zip endpoint, so an unauthenticated visitor can't loop it to amplify
+// CPU/bandwidth. Nil keeps the endpoint unthrottled (e.g. in tests).
+func (h *ShareHandler) SetDownloadLimiter(l ShareRateLimiter) { h.dlLimiter = l }
 
 func (h *ShareHandler) load() {
 	data, err := os.ReadFile(h.storePath)
@@ -359,36 +366,35 @@ func (h *ShareHandler) Download(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "Too many attempts. Try again later.", http.StatusTooManyRequests)
 			return
 		}
-		// Accept password ONLY via form POST body or session cookie.
-		// Do NOT accept ?p=... query params (leak in logs/history).
-		providedPassword := ""
+		// Accept the password ONLY via form POST body, or proof-of-auth via the
+		// session cookie. Never via ?p=... query params (leak in logs/history).
 		if r.Method == "POST" {
 			_ = r.ParseForm()
-			providedPassword = r.FormValue("password")
-		} else if c, err := r.Cookie(shareAuthCookieName(token)); err == nil {
-			providedPassword = c.Value
-		}
-		if providedPassword == "" {
-			h.servePasswordPage(w, token, entry.FileName, false)
-			return
-		}
-		if subtle.ConstantTimeCompare([]byte(providedPassword), []byte(entry.Password)) != 1 {
-			h.servePasswordPage(w, token, entry.FileName, true)
-			return
-		}
-		// Good password via POST → set session cookie so follow-up nav doesn't re-prompt.
-		if r.Method == "POST" {
+			if subtle.ConstantTimeCompare([]byte(r.FormValue("password")), []byte(entry.Password)) != 1 {
+				h.servePasswordPage(w, token, entry.FileName, true)
+				return
+			}
+			// Good password → set the auth cookie to a DERIVED value (not the
+			// password itself, so the plaintext never lands in the cookie jar) and
+			// redirect to GET so a refresh doesn't resubmit the form.
 			http.SetCookie(w, &http.Cookie{
 				Name:     shareAuthCookieName(token),
-				Value:    entry.Password,
+				Value:    shareAuthCookieValue(entry.Password),
 				Path:     "/share/" + token,
 				HttpOnly: true,
 				Secure:   os.Getenv("COOKIE_INSECURE") != "1",
 				SameSite: http.SameSiteLaxMode,
 				MaxAge:   3600,
 			})
-			// Redirect to GET so a refresh doesn't resubmit the password form.
 			http.Redirect(w, r, r.URL.Path, http.StatusSeeOther)
+			return
+		}
+		authed := false
+		if c, err := r.Cookie(shareAuthCookieName(token)); err == nil {
+			authed = subtle.ConstantTimeCompare([]byte(c.Value), []byte(shareAuthCookieValue(entry.Password))) == 1
+		}
+		if !authed {
+			h.servePasswordPage(w, token, entry.FileName, false)
 			return
 		}
 	}
@@ -426,6 +432,12 @@ func (h *ShareHandler) Download(w http.ResponseWriter, r *http.Request) {
 
 	if r.URL.Query().Get("download") == "1" {
 		if info.IsDir() {
+			// The on-the-fly zip re-walks and re-compresses the whole tree, so
+			// throttle it per IP — this is an unauthenticated public endpoint.
+			if h.dlLimiter != nil && !h.dlLimiter.Check(r) {
+				http.Error(w, "Too many requests. Try again later.", http.StatusTooManyRequests)
+				return
+			}
 			h.serveDirectoryAsZip(w, targetPath, info.Name())
 		} else {
 			h.serveFile(w, targetPath, info)
@@ -443,6 +455,14 @@ func (h *ShareHandler) Download(w http.ResponseWriter, r *http.Request) {
 
 func shareAuthCookieName(token string) string {
 	return "share_auth_" + token
+}
+
+// shareAuthCookieValue derives the share-auth cookie value from the share
+// password. Storing this derived value (not the plaintext password) keeps the
+// password itself out of the visitor's cookie jar.
+func shareAuthCookieValue(password string) string {
+	sum := sha256.Sum256([]byte("clouddrive-share-auth\x00" + password))
+	return hex.EncodeToString(sum[:])
 }
 
 func (h *ShareHandler) servePasswordPage(w http.ResponseWriter, token string, fileName string, wrongPassword bool) {
@@ -574,7 +594,7 @@ func (h *ShareHandler) Upload(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		c, err := r.Cookie(shareAuthCookieName(token))
-		if err != nil || subtle.ConstantTimeCompare([]byte(c.Value), []byte(entry.Password)) != 1 {
+		if err != nil || subtle.ConstantTimeCompare([]byte(c.Value), []byte(shareAuthCookieValue(entry.Password))) != 1 {
 			http.Error(w, "Authentication required", http.StatusUnauthorized)
 			return
 		}
