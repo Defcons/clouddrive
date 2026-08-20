@@ -103,6 +103,7 @@ func main() {
 	loginLimiter := middleware.NewRateLimiter(5, 2*time.Minute, 5*time.Minute)
 	csrfMiddleware := middleware.NewCSRFMiddleware()
 	sharePwLimiter := middleware.NewRateLimiter(10, 5*time.Minute, 15*time.Minute)
+	shareDownloadLimiter := middleware.NewRateLimiter(30, time.Minute, 2*time.Minute)
 
 	sessionStore := services.NewSessionStore(storageRoot)
 	sessionStore.PruneExpired(handlers.JWTLifetime, time.Now().UnixMilli())
@@ -119,6 +120,7 @@ func main() {
 	diskHandler := handlers.NewDiskHandler(storageRoot)
 	diskHandler.SetQuotaLookup(userStore.GetQuota)
 	shareHandler := handlers.NewShareHandler(storageRoot, permStore, auditLog, sharePwLimiter)
+	shareHandler.SetDownloadLimiter(shareDownloadLimiter)
 	versionHandler := handlers.NewVersionHandler()
 	permHandler := handlers.NewPermissionsHandler(permStore, auditLog)
 	auditHandler := handlers.NewAuditHandler(auditLog)
