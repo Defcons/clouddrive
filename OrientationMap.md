@@ -7,7 +7,7 @@
   Feature detail already lives in FEATURES.md; hardening saga in IMPROVEMENTS.md — link, don't copy.
 -->
 
-_Last verified: 2026-08-20 @ ff7b489 — audit round 5 shipped to prod; followup branch adds M4/L1/L4/L5 + a deploy-ops landmine below._
+_Last verified: 2026-08-20 — audit rounds 5–6 shipped to prod; M6 (non-root uid 1000) on branch `security/audit-round6-m6-nonroot` pending a one-time host `/data` chown._
 
 ## What this is
 Self-hosted single-binary personal cloud / file explorer for the homelab. A Go 1.22 HTTP
@@ -50,4 +50,5 @@ Entry point: `backend/main.go`. Data lives under `STORAGE_ROOT` (a mounted volum
 - **WebDAV has no MFA and admin sessions see app dotdirs under root** (documented; app-passwords are the proper follow-up).
 - **Linux-only build**: `disk.go`/`files.go` use Linux syscalls — verify with `GOOS=linux go build/vet/test ./...`; plain Windows `go build` fails by design (see IMPROVEMENTS.md verification gates).
 - **`master` auto-deploys** to the live homelab server on push (`.github/workflows/deploy.yml`). Do feature/hardening work on a branch; never push `master` casually.
+- **Non-root container (M6):** the clouddrive image runs as **uid/gid 1000** (matches Syncthing's PUID/PGID), so the shared host `/data` MUST be owned `1000:1000` or the app can't write and the container fails on boot. If `/data` is ever chowned elsewhere, set it back to `1000:1000`.
 - **Deploy git-perms wedge (operational, seen 2026-08-20):** the deploy SSHes in as the `deploy` user and runs `git fetch` in `/opt/clouddrive`. If any `.git/objects` shard drifts to root ownership (a `git`/`docker` command run as root there), fetch dies with `insufficient permission for adding an object to repository database .git/objects` and `set -e` aborts BEFORE the container is touched (live site stays up on the old build — deploys just silently stop landing). Fix on the box, as root: `chown -R deploy:deploy /opt/clouddrive`. Prevention: never run git as root in that checkout.
