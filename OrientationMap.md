@@ -7,7 +7,7 @@
   Feature detail already lives in FEATURES.md; hardening saga in IMPROVEMENTS.md — link, don't copy.
 -->
 
-_Last verified: 2026-08-19 @ aa0100f — audit round 5 (branch `security/audit-round5-fixes`): traversal/DoS fixes + new invariants below._
+_Last verified: 2026-08-20 @ ff7b489 — audit round 5 shipped to prod; followup branch adds M4/L1/L4/L5 + a deploy-ops landmine below._
 
 ## What this is
 Self-hosted single-binary personal cloud / file explorer for the homelab. A Go 1.22 HTTP
@@ -50,3 +50,4 @@ Entry point: `backend/main.go`. Data lives under `STORAGE_ROOT` (a mounted volum
 - **WebDAV has no MFA and admin sessions see app dotdirs under root** (documented; app-passwords are the proper follow-up).
 - **Linux-only build**: `disk.go`/`files.go` use Linux syscalls — verify with `GOOS=linux go build/vet/test ./...`; plain Windows `go build` fails by design (see IMPROVEMENTS.md verification gates).
 - **`master` auto-deploys** to the live homelab server on push (`.github/workflows/deploy.yml`). Do feature/hardening work on a branch; never push `master` casually.
+- **Deploy git-perms wedge (operational, seen 2026-08-20):** the deploy SSHes in as the `deploy` user and runs `git fetch` in `/opt/clouddrive`. If any `.git/objects` shard drifts to root ownership (a `git`/`docker` command run as root there), fetch dies with `insufficient permission for adding an object to repository database .git/objects` and `set -e` aborts BEFORE the container is touched (live site stays up on the old build — deploys just silently stop landing). Fix on the box, as root: `chown -R deploy:deploy /opt/clouddrive`. Prevention: never run git as root in that checkout.

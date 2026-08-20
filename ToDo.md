@@ -42,7 +42,7 @@ deploy/frontend/DoS). Every item below was personally re-read in source before l
   only the rate-limiter's `getIP` was hardened (iter 6). Every audit entry's IP is forgeable
   (audit is JSON-marshaled so no log injection; session-list IP self-heals via middleware Touch→getIP).
   Fix: export one `middleware.RealIP(r)` (trusted-proxy logic) and use it in all three sites.
-- [ ] **M4 — CI actions on floating tags hold the deploy key.** `.github/workflows/deploy.yml:24,32`
+- [x] **M4 (FIXED) — CI actions on floating tags hold the deploy key.** `.github/workflows/deploy.yml:24,32`
   (`tailscale/github-action@v3`, `appleboy/ssh-action@v1`). A compromised action release runs in the
   job holding `DEPLOY_SSH_KEY` + Tailscale secrets → root on the live homelab. Fix: pin to commit SHAs.
 - [ ] **M5 — Syncthing GUI exposed.** `docker-compose.yml:22` publishes `8384` on `0.0.0.0`; the
@@ -72,6 +72,10 @@ deploy/frontend/DoS). Every item below was personally re-read in source before l
   cap, so the pattern was just omitted). Fix: shared `MaxBytesReader(~1 MB)` decode helper.
 
 **LOW** (polish / defense-in-depth — detail in ResearchJournal round 5)
+- [x] **Fixed on branch `security/audit-round5-followup`: L1, L4, L5.** L1 cleanup no longer evicts a
+  locked-out entry early; L4 the share-auth cookie stores a derived value, not the plaintext password
+  (`TestSharePasswordCookieIsDerived`); L5 the public directory-zip endpoint is per-IP rate-limited
+  (`shareDownloadLimiter`). Still open: L2, L3, L6, L7 (base-image pinning / compose hardening), L8.
 - [ ] L1 rate-limiter `cleanup` lifts lockout early when `lockout>2*window` (both limiters are;
   `ratelimit.go:49`). L2 sessions pruned only at startup (growth + stale "active sessions"). L3 audit
   log unbounded + `GetRecent` reads whole file under the write lock (`auditlog.go:66`). L4 share
