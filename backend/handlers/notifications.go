@@ -39,7 +39,7 @@ func (h *NotificationHandler) MarkRead(w http.ResponseWriter, r *http.Request) {
 		IDs []string `json:"ids"`
 		All bool     `json:"all"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+	if err := decodeJSON(w, r, &req); err != nil {
 		http.Error(w, "Invalid request", http.StatusBadRequest)
 		return
 	}

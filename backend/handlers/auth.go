@@ -8,7 +8,6 @@ import (
 	"log/slog"
 	"net/http"
 	"os"
-	"strings"
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
@@ -48,17 +47,11 @@ func NewAuthHandler(userStore *services.UserStore, jwtSecret string, rateLimiter
 	}
 }
 
+// clientIP returns the caller's IP using the same trusted-proxy rules as the
+// rate limiter, so audit-log and session IPs can't be spoofed by a client
+// setting X-Forwarded-For / X-Real-IP directly. See middleware.RealIP.
 func clientIP(r *http.Request) string {
-	if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
-		if comma := strings.Index(xff, ","); comma >= 0 {
-			return strings.TrimSpace(xff[:comma])
-		}
-		return strings.TrimSpace(xff)
-	}
-	if xri := r.Header.Get("X-Real-IP"); xri != "" {
-		return xri
-	}
-	return r.RemoteAddr
+	return middleware.RealIP(r)
 }
 
 func (h *AuthHandler) setAuthCookie(w http.ResponseWriter, token string) {
@@ -143,7 +136,7 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 		Username string `json:"username"`
 		Password string `json:"password"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+	if err := decodeJSON(w, r, &req); err != nil {
 		http.Error(w, "Invalid request", http.StatusBadRequest)
 		return
 	}
@@ -267,7 +260,7 @@ func (h *AuthHandler) RevokeSession(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		ID string `json:"id"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.ID == "" {
+	if err := decodeJSON(w, r, &req); err != nil || req.ID == "" {
 		http.Error(w, "Invalid request", http.StatusBadRequest)
 		return
 	}
@@ -294,7 +287,7 @@ func (h *AuthHandler) ChangePassword(w http.ResponseWriter, r *http.Request) {
 		CurrentPassword string `json:"currentPassword"`
 		NewPassword     string `json:"newPassword"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+	if err := decodeJSON(w, r, &req); err != nil {
 		http.Error(w, "Invalid request", http.StatusBadRequest)
 		return
 	}

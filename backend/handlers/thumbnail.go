@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"image"
 	"image/color"
+	"io"
 	"image/jpeg"
 	"net/http"
 	"os"
@@ -18,6 +19,11 @@ import (
 )
 
 const thumbMaxDim = 256
+
+// maxThumbPixels caps the pixel count we'll fully decode. A small image that
+// declares huge dimensions (a decode bomb) would otherwise allocate gigabytes
+// of raster in image.Decode before we ever downscale.
+const maxThumbPixels = 40_000_000 // 40 megapixels
 
 // decodableThumb is the set of extensions the standard library can decode and
 // downscale. Other image types are served as-is (still small enough to be fine
@@ -104,6 +110,19 @@ func makeThumbnail(absPath string) ([]byte, error) {
 		return nil, err
 	}
 	defer f.Close()
+
+	// Reject decode bombs before allocating the full raster: DecodeConfig reads
+	// only the header, so width*height can be bounded before image.Decode.
+	cfg, _, err := image.DecodeConfig(f)
+	if err != nil {
+		return nil, err
+	}
+	if cfg.Width <= 0 || cfg.Height <= 0 || int64(cfg.Width)*int64(cfg.Height) > maxThumbPixels {
+		return nil, fmt.Errorf("image too large to thumbnail")
+	}
+	if _, err := f.Seek(0, io.SeekStart); err != nil {
+		return nil, err
+	}
 
 	img, _, err := image.Decode(f)
 	if err != nil {

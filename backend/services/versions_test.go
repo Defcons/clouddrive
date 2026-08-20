@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 )
 
 func TestVersioningSaveListRestore(t *testing.T) {
@@ -66,5 +67,40 @@ func TestVersioningRejectsBadID(t *testing.T) {
 	// A non-numeric id (path traversal attempt) must be rejected.
 	if err := vs.RestoreVersion("/x.txt", "../../etc/passwd", file); err == nil {
 		t.Error("expected invalid version id to be rejected")
+	}
+}
+
+// Regression: restoring the OLDEST version while at the retention cap must not
+// lose it. Snapshotting the current file pushes the count over the cap, and the
+// prune that follows used to delete the very version being restored (leaving the
+// restore to fail ENOENT and destroying the data).
+func TestVersioningRestoreOldestAtCap(t *testing.T) {
+	root := t.TempDir()
+	vs := NewVersionStore(root)
+	file := filepath.Join(root, "log.txt")
+
+	for i := 0; i < maxVersionsPerFile; i++ {
+		if err := os.WriteFile(file, []byte{byte('A' + i)}, 0644); err != nil {
+			t.Fatal(err)
+		}
+		if err := vs.SaveVersion(file, "/log.txt"); err != nil {
+			t.Fatal(err)
+		}
+		time.Sleep(2 * time.Millisecond) // guarantee distinct nanotime ids
+	}
+	versions := vs.ListVersions("/log.txt")
+	if len(versions) != maxVersionsPerFile {
+		t.Fatalf("want %d versions, got %d", maxVersionsPerFile, len(versions))
+	}
+	oldest := versions[len(versions)-1] // list is newest-first; oldest content is 'A'
+
+	if err := os.WriteFile(file, []byte("current"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := vs.RestoreVersion("/log.txt", oldest.ID, file); err != nil {
+		t.Fatalf("restore oldest at cap: %v", err)
+	}
+	if b, _ := os.ReadFile(file); string(b) != "A" {
+		t.Errorf("restored content = %q, want %q (oldest was pruned before the restore copy)", b, "A")
 	}
 }
