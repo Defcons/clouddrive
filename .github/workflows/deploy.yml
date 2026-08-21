@@ -57,4 +57,9 @@ jobs:
               cp .env.example .env
               echo "WARNING: .env created from example — update credentials!"
             fi
-            docker compose up --build --force-recreate -d
+            # Pull the prebuilt image (build-image.yml publishes it) rather than
+            # rebuilding on this small host — a cold host build took >30m and kept
+            # timing out / dropping the SSH session. Requires the GHCR package to
+            # be public (or a `docker login ghcr.io` here).
+            docker compose pull
+            docker compose up -d --force-recreate

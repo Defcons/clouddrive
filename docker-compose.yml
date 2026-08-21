@@ -1,5 +1,9 @@
 services:
   clouddrive:
+    # Prod pulls this prebuilt multi-arch image (published by build-image.yml) so
+    # the small host never has to rebuild. `build: .` stays for local dev
+    # (`docker compose up --build`).
+    image: ghcr.io/defcons/clouddrive:latest
     build: .
     container_name: clouddrive
     restart: unless-stopped
