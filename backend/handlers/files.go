@@ -139,6 +139,27 @@ func getClientIP(r *http.Request) string {
 	return middleware.RealIP(r)
 }
 
+// isReservedRel reports whether reqPath targets an internal store artifact that
+// must never be reachable through the file API. Users can't create dot-prefixed
+// names (see the write-name guards), so every dotfile/dotdir under the storage
+// root is internal — the JWT signing key (.jwt_secret), session registry
+// (.sessions.json), audit log, permissions/tags/versions/trash/thumbs/uploads,
+// etc. The one non-dot store file is users.json at the root (password hashes +
+// TOTP secrets). Serving any of these leaks secrets or, for .jwt_secret, allows
+// session forgery.
+func isReservedRel(reqPath string) bool {
+	cleaned := filepath.ToSlash(filepath.Clean("/" + strings.TrimPrefix(filepath.ToSlash(reqPath), "/")))
+	if cleaned == "/users.json" {
+		return true
+	}
+	for _, seg := range strings.Split(strings.Trim(cleaned, "/"), "/") {
+		if strings.HasPrefix(seg, ".") {
+			return true
+		}
+	}
+	return false
+}
+
 // safePath resolves reqPath and ensures it stays within the storage root.
 // It also resolves symlinks — if a link points outside the root, the path
 // is rejected. This is critical for preventing zip/download endpoints from
@@ -146,6 +167,12 @@ func getClientIP(r *http.Request) string {
 func (h *FileHandler) safePath(reqPath string) (string, error) {
 	if reqPath == "" {
 		reqPath = "/"
+	}
+	// Deny internal store artifacts before any filesystem work — these hold
+	// secrets (JWT signing key, password hashes, TOTP seeds) and are never
+	// legitimate targets of the file API.
+	if isReservedRel(reqPath) {
+		return "", fmt.Errorf("path not found")
 	}
 	cleaned := filepath.Clean(reqPath)
 	full := filepath.Join(h.root, cleaned)
@@ -274,6 +301,12 @@ func (h *FileHandler) List(w http.ResponseWriter, r *http.Request) {
 		}
 		entryPath := filepath.Join(dirPath, entry.Name())
 		entryPath = filepath.ToSlash(entryPath)
+
+		// Never surface internal store files. Dotfiles are skipped above; this
+		// also catches users.json (hashes + TOTP secrets), which is not a dotfile.
+		if isReservedRel(entryPath) {
+			continue
+		}
 
 		// Filter out directories the user can't access
 		if entry.IsDir() && h.permStore != nil {
@@ -714,6 +747,10 @@ func (h *FileHandler) Search(w http.ResponseWriter, r *http.Request) {
 			}
 			return nil
 		}
+		// Skip internal store files (users.json is not a dotfile).
+		if rel, rerr := filepath.Rel(h.root, path); rerr == nil && isReservedRel("/"+filepath.ToSlash(rel)) {
+			return nil
+		}
 
 		if strings.Contains(strings.ToLower(info.Name()), query) {
 			relPath, _ := filepath.Rel(h.root, path)
@@ -757,6 +794,10 @@ func (h *FileHandler) Search(w http.ResponseWriter, r *http.Request) {
 				if info.IsDir() {
 					return filepath.SkipDir
 				}
+				return nil
+			}
+			// Skip internal store files (users.json is not a dotfile).
+			if rel, rerr := filepath.Rel(h.root, path); rerr == nil && isReservedRel("/"+filepath.ToSlash(rel)) {
 				return nil
 			}
 			if info.IsDir() || info.Size() == 0 || info.Size() > maxContentScanBytes {
