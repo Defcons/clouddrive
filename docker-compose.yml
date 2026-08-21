@@ -1,10 +1,10 @@
 services:
   clouddrive:
-    # Prod pulls this prebuilt multi-arch image (published by build-image.yml) so
-    # the small host never has to rebuild. `build: .` stays for local dev
-    # (`docker compose up --build`).
+    # Image-only: prod (and `docker run`) pull the prebuilt multi-arch image, so
+    # the host never builds. To build from local source instead, either
+    # `docker build -t clouddrive .` or drop in a docker-compose.override.yml with
+    # `build: .` (gitignored — see docker-compose.override.yml.example).
     image: ghcr.io/defcons/clouddrive:latest
-    build: .
     container_name: clouddrive
     restart: unless-stopped
     security_opt:

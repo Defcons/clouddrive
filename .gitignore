@@ -3,6 +3,9 @@ frontend/dist/
 frontend/tsconfig.tsbuildinfo
 backend/static/*
 !backend/static/.gitkeep
+
+# Local dev compose override (adds `build: .` to build from source)
+docker-compose.override.yml
 *.exe
 *.exe~
 *.dll

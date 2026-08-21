@@ -1,0 +1,8 @@
+# Local development: build the clouddrive image from your local source instead
+# of pulling the published one.
+#
+# Copy this to `docker-compose.override.yml` (gitignored). Docker Compose merges
+# it automatically, so `docker compose up --build` builds your local changes.
+services:
+  clouddrive:
+    build: .
