@@ -56,6 +56,7 @@ Then `docker compose up -d` and open http://localhost:8080.
 - 🕓 **Versions** — automatic file version history with one-click restore
 - 🔐 **Security** — bcrypt passwords, optional TOTP two-factor, CSRF protection, audit log, rate limiting
 - 🔌 **WebDAV** (opt-in) — mount your drive as a network drive
+- ☁️ **Offsite-backup flags** — mark folders for your own backup job to pick up (see [Offsite backup](#offsite-backup))
 - 🌓 **Dark mode**, keyboard shortcuts, and an installable PWA
 
 ## Configuration
@@ -71,6 +72,25 @@ CloudDrive needs **zero configuration** to run — everything below is optional 
 | `WEBDAV_ENABLED` | off | Set to `1` to expose `/webdav` (Basic Auth, HTTPS only) |
 
 To seed the admin non-interactively instead of using the wizard (e.g. automated deploys), set `CLOUDDRIVE_USER` and `CLOUDDRIVE_PASS` before first boot.
+
+## Offsite backup
+
+CloudDrive can **flag** folders for offsite backup, but it deliberately **runs no backups itself** — it only records your choice so your own backup tooling can act on it. Right-click a folder → **Add to Offsite Backup**, and a marker is written to `.backup-tiers.json` at the storage root (`2` = flagged for offsite):
+
+```json
+{ "/Documents": 2, "/Photos": 2 }
+```
+
+Point any backup tool (restic, rclone, borg, Kopia…) at that file and back up the flagged folders. For example, a nightly restic run that backs up only what's flagged:
+
+```bash
+DATA=/path/to/your/data          # your STORAGE_ROOT
+jq -r 'to_entries[] | select(.value==2) | .key' "$DATA/.backup-tiers.json" \
+  | sed "s#^#$DATA#" \
+  | restic backup --files-from -
+```
+
+This keeps CloudDrive lightweight and lets you use whatever backup stack you already trust.
 
 ## Screenshots
 
