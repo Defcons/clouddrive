@@ -57,9 +57,10 @@ jobs:
               cp .env.example .env
               echo "WARNING: .env created from example — update credentials!"
             fi
-            # Pull the prebuilt image (build-image.yml publishes it) rather than
-            # rebuilding on this small host — a cold host build took >30m and kept
-            # timing out / dropping the SSH session. Requires the GHCR package to
-            # be public (or a `docker login ghcr.io` here).
-            docker compose pull
-            docker compose up -d --force-recreate
+            # Pull the prebuilt public image (build-image.yml publishes it) rather
+            # than rebuilding on this small host — a cold host build OOM'd the LXC.
+            # Pull EXPLICITLY: `docker compose pull` SKIPS services that have a
+            # build: section, so it silently falls back to building. `--no-build`
+            # then guarantees the deploy can never rebuild on the host.
+            docker pull ghcr.io/defcons/clouddrive:latest
+            docker compose up -d --no-build --force-recreate
