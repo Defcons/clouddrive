@@ -31,3 +31,17 @@ credentials.json
 data/
 backend/data/
 users.json
+
+# Internal working docs — the six-doc "bible" + legacy dev logs. NEVER commit
+# these to a PUBLIC repo: they carry deploy/infra detail, in-flight notes, and
+# security analysis. They live locally only (backed up via the C:\Dev backup).
+/OrientationMap.md
+/NavigationMap.md
+/CodeMap.md
+/CODE-MAP.md
+/KnowledgeBase.md
+/ResearchJournal.md
+/ToDo.md
+/Testing.md
+/FEATURES.md
+/IMPROVEMENTS.md
