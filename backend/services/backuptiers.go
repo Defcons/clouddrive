@@ -7,9 +7,10 @@ import (
 	"sync"
 )
 
-// BackupTier values:
-//   0 = no special backup handling (filesystem snapshots only, default)
-//   2 = included in offsite (offsite storage restic)
+// BackupTier is a per-path flag consumed by an EXTERNAL backup job (this app
+// only records the flag in .backup-tiers.json; it runs no backups itself):
+//   0 = default, not flagged for offsite backup
+//   2 = flagged for offsite backup
 type BackupTierStore struct {
 	filePath string
 	tiers    map[string]int // path -> tier
