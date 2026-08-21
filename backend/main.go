@@ -50,14 +50,12 @@ func main() {
 		storageRoot = "./data"
 	}
 
-	// JWT secret is mandatory — fail fast if unset or using default.
-	jwtSecret := os.Getenv("JWT_SECRET")
-	if jwtSecret == "" || jwtSecret == "change-me-in-production" {
-		slog.Error("JWT_SECRET must be set to a strong random value (min 32 chars). Refusing to start.")
-		os.Exit(1)
-	}
-	if len(jwtSecret) < 32 {
-		slog.Error("JWT_SECRET is too short; use at least 32 random characters. Refusing to start.")
+	// JWT secret: prefer the JWT_SECRET env var; otherwise load or generate a
+	// persistent secret under the storage root so a fresh install needs zero
+	// configuration to start. See resolveJWTSecret.
+	jwtSecret, err := resolveJWTSecret(storageRoot)
+	if err != nil {
+		slog.Error("could not establish JWT secret", "err", err)
 		os.Exit(1)
 	}
 
@@ -244,6 +242,11 @@ func main() {
 // ---- Route registration (extracted from main for clarity) ----
 
 func registerAuthRoutes(mux *http.ServeMux, h *handlers.AuthHandler, auth *middleware.AuthMiddleware, csrf *middleware.CSRFMiddleware, limiter *middleware.RateLimiter, protectedWrite func(http.HandlerFunc) http.HandlerFunc) {
+	// First-run setup — unauthenticated by necessity (no account exists yet).
+	// Both are safe because /api/setup only creates an admin when zero users
+	// exist (enforced in the store), and status reveals only that boolean.
+	mux.HandleFunc("GET /api/setup/status", h.SetupStatus)
+	mux.HandleFunc("POST /api/setup", limiter.WrapLogin(h.Setup))
 	mux.HandleFunc("POST /api/auth/login", limiter.WrapLogin(h.Login))
 	mux.HandleFunc("POST /api/auth/logout", h.Logout)
 	mux.HandleFunc("GET /api/auth/check", auth.Wrap(h.Check))

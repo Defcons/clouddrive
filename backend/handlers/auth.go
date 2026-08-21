@@ -5,6 +5,7 @@ import (
 	"clouddrive/models"
 	"clouddrive/services"
 	"encoding/json"
+	"errors"
 	"log/slog"
 	"net/http"
 	"os"
@@ -198,6 +199,52 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 	if err := h.issueSession(w, r, user); err != nil {
 		slog.Warn("issue session failed", "err", err)
 		http.Error(w, "Failed to create session", http.StatusInternalServerError)
+	}
+}
+
+// SetupStatus reports whether first-run setup is still needed (no users exist
+// yet). Unauthenticated by necessity — the UI calls it before any account
+// exists to decide whether to show the setup wizard. It reveals only that one
+// boolean.
+func (h *AuthHandler) SetupStatus(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(map[string]bool{"needed": h.userStore.Count() == 0})
+}
+
+// Setup creates the first admin account on first run and logs them straight in.
+// It is unauthenticated (no account exists yet) and NOT CSRF-protected (a CSRF
+// token requires a session); the store's zero-users gate is the protection —
+// once any account exists this returns 409 and can never add users. Expose a
+// brand-new, un-set-up instance behind your network, not the open internet.
+func (h *AuthHandler) Setup(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Username string `json:"username"`
+		Password string `json:"password"`
+	}
+	if err := decodeJSON(w, r, &req); err != nil {
+		http.Error(w, "Invalid request", http.StatusBadRequest)
+		return
+	}
+
+	user, err := h.userStore.CreateFirstAdmin(req.Username, req.Password)
+	if err != nil {
+		if errors.Is(err, services.ErrSetupComplete) {
+			http.Error(w, "Setup already complete", http.StatusConflict)
+			return
+		}
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	if h.audit != nil {
+		h.audit.Log("SETUP_ADMIN_CREATE", user.Username, clientIP(r), "first-run admin created")
+	}
+	if h.rateLimiter != nil {
+		h.rateLimiter.Reset(r)
+	}
+	if err := h.issueSession(w, r, user); err != nil {
+		slog.Warn("issue session after setup failed", "err", err)
+		http.Error(w, "Account created, but sign-in failed — please log in", http.StatusInternalServerError)
 	}
 }
 

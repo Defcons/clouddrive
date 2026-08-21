@@ -3,6 +3,7 @@ package services
 import (
 	"clouddrive/models"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"os"
@@ -11,6 +12,10 @@ import (
 
 	"golang.org/x/crypto/bcrypt"
 )
+
+// ErrSetupComplete is returned by CreateFirstAdmin when an account already
+// exists, so first-run setup can be gated (and the wizard closed) permanently.
+var ErrSetupComplete = errors.New("setup already complete")
 
 // AdminUserInfo is the admin-facing view of a user (no secrets).
 type AdminUserInfo struct {
@@ -73,6 +78,16 @@ func InitFromEnv(configPath, username, password string) error {
 func (s *UserStore) load() error {
 	data, err := os.ReadFile(s.configPath)
 	if err != nil {
+		if os.IsNotExist(err) {
+			// Fresh install — no users file yet. Start empty so the server can
+			// boot; the first-run setup wizard (or InitFromEnv) then creates the
+			// initial admin. Without this a zero-config install couldn't start.
+			s.mu.Lock()
+			s.users = nil
+			s.mu.Unlock()
+			log.Printf("no users file at %s yet — starting empty (first-run setup required)", s.configPath)
+			return nil
+		}
 		return fmt.Errorf("failed to read users config: %w", err)
 	}
 
@@ -215,6 +230,54 @@ func (s *UserStore) ListUsers() []AdminUserInfo {
 		})
 	}
 	return out
+}
+
+// Count returns how many users are registered. Used by first-run setup to
+// decide whether the setup wizard is still needed.
+func (s *UserStore) Count() int {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return len(s.users)
+}
+
+// CreateFirstAdmin seeds the very first admin during first-run setup. It is the
+// only account-creation path that needs no existing session, so it refuses to
+// act once any user exists (returns ErrSetupComplete) — closing the wizard for
+// good. The zero-users check and the append happen under one write lock so two
+// concurrent setup requests can't both create an admin. Returns the created
+// user so the caller can issue a session.
+func (s *UserStore) CreateFirstAdmin(username, password string) (*models.User, error) {
+	username = strings.TrimSpace(username)
+	if username == "" {
+		return nil, fmt.Errorf("username is required")
+	}
+	if len(password) < 8 {
+		return nil, fmt.Errorf("password must be at least 8 characters")
+	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if len(s.users) != 0 {
+		return nil, ErrSetupComplete
+	}
+	hash, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
+	if err != nil {
+		return nil, err
+	}
+	u := models.User{
+		Username:   username,
+		Password:   string(hash),
+		HomeFolder: "/",
+		Role:       "admin",
+	}
+	s.users = append(s.users, u)
+	if err := s.saveLocked(); err != nil {
+		// Roll back the in-memory add so a failed persist doesn't leave the
+		// store looking configured when nothing reached disk.
+		s.users = nil
+		return nil, err
+	}
+	return &u, nil
 }
 
 // CreateUser adds a new user. Errors on duplicate, weak password, or bad role.
