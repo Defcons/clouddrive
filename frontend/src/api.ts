@@ -198,6 +198,41 @@ export async function regenerateBackupCodes(currentPassword: string): Promise<{ 
   return res.json()
 }
 
+// ---- First-run setup ----
+
+// getSetupStatus reports whether the instance still needs its first admin
+// created (true only when zero accounts exist). Safe/unauthenticated by design.
+export async function getSetupStatus(): Promise<boolean> {
+  try {
+    const res = await fetch(`${API_BASE}/setup/status`, FETCH_OPTS)
+    if (!res.ok) return false
+    const data = await res.json()
+    return !!data.needed
+  } catch {
+    return false
+  }
+}
+
+// setup creates the first admin account and logs in (the server sets the
+// session cookie), returning the new user. Only works while no account exists.
+export async function setup(username: string, password: string): Promise<CurrentUser> {
+  const res = await fetch(`${API_BASE}/setup`, {
+    ...FETCH_OPTS,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ username, password }),
+  })
+  if (!res.ok) throw new Error((await res.text()) || 'Setup failed')
+  const data = await res.json()
+  currentUser = {
+    username: data.username,
+    role: data.role,
+    homeFolder: data.homeFolder,
+  }
+  csrfToken = null
+  return currentUser
+}
+
 export async function checkAuth(): Promise<boolean> {
   try {
     const res = await fetch(`${API_BASE}/auth/check`, FETCH_OPTS)
