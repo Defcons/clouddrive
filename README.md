@@ -5,6 +5,10 @@
 ![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-blue.svg)
 ![Build](https://github.com/Defcons/clouddrive/actions/workflows/build-image.yml/badge.svg)
 
+<p align="center">
+  <img src="docs/screenshots/explorer-light.png" alt="CloudDrive — self-hosted file explorer" width="880">
+</p>
+
 ---
 
 ## Quickstart
@@ -70,8 +74,17 @@ To seed the admin non-interactively instead of using the wizard (e.g. automated 
 
 ## Screenshots
 
-<!-- TODO: hero screenshot + a couple of feature shots (added during the UI pass). -->
-_Coming soon._
+**Zero-config first run** — no config files, no secret to generate, just create your admin account:
+
+<p align="center">
+  <img src="docs/screenshots/setup-wizard.png" alt="First-run setup wizard" width="360">
+</p>
+
+**Built-in dark mode** (and light):
+
+<p align="center">
+  <img src="docs/screenshots/explorer-dark.png" alt="CloudDrive in dark mode" width="880">
+</p>
 
 ## Security
 
