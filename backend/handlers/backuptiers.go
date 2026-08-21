@@ -12,11 +12,16 @@ type BackupTierHandler struct {
 	store     *services.BackupTierStore
 	permStore *services.PermissionStore
 	audit     *services.AuditLogger
+	settings  *services.SettingsStore // optional; gates the offsite feature
 }
 
 func NewBackupTierHandler(store *services.BackupTierStore, permStore *services.PermissionStore, audit *services.AuditLogger) *BackupTierHandler {
 	return &BackupTierHandler{store: store, permStore: permStore, audit: audit}
 }
+
+// SetSettings wires the instance settings so the offsite-backup feature can be
+// disabled instance-wide.
+func (h *BackupTierHandler) SetSettings(s *services.SettingsStore) { h.settings = s }
 
 // Get the tier for a path (with inheritance from parents)
 func (h *BackupTierHandler) Get(w http.ResponseWriter, r *http.Request) {
@@ -57,6 +62,14 @@ func (h *BackupTierHandler) Set(w http.ResponseWriter, r *http.Request) {
 
 	if req.Tier != 0 && req.Tier != 2 {
 		http.Error(w, "tier must be 0 (none) or 2 (offsite)", http.StatusBadRequest)
+		return
+	}
+
+	// Flagging a folder for offsite backup is gated by the instance setting.
+	// Tier 0 (clearing an existing flag) is always allowed so admins can turn
+	// the feature off and let users un-flag folders.
+	if req.Tier == 2 && h.settings != nil && !h.settings.Get().OffsiteBackupEnabled {
+		http.Error(w, "Offsite backup is disabled on this instance", http.StatusForbidden)
 		return
 	}
 

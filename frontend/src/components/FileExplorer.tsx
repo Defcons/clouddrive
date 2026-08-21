@@ -19,6 +19,7 @@ import TrashView from './TrashView'
 import RecentFiles from './RecentFiles'
 import NotificationBell from './NotificationBell'
 import AccountMenu from './AccountMenu'
+import type { InstanceSettings } from '../api'
 import { APP_VERSION } from '../changelog'
 import { getCurrentUser } from '../api'
 import { useTheme } from '../hooks/useTheme'
@@ -77,7 +78,7 @@ function SortHeader({ label, column, sortBy, sortDir, onClick, className }: {
   )
 }
 
-export default function FileExplorer({ initialPath, onLogout }: { initialPath: string; onLogout: () => void }) {
+export default function FileExplorer({ initialPath, onLogout, settings, onSettingsChanged }: { initialPath: string; onLogout: () => void; settings: InstanceSettings; onSettingsChanged: () => void }) {
   const [path, setPath] = useState(initialPath || '/')
   const [history, setHistory] = useState<string[]>([])
   const [files, setFiles] = useState<FileItemType[]>([])
@@ -709,7 +710,7 @@ export default function FileExplorer({ initialPath, onLogout }: { initialPath: s
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
                 </svg>
               </button>
-              <h1 className="text-lg font-bold text-gray-800 dark:text-gray-100">CloudDrive</h1>
+              <h1 className="text-lg font-bold text-gray-800 dark:text-gray-100">{settings.instanceName}</h1>
               <button
                 onClick={() => setShowChangelog(true)}
                 className="px-1.5 sm:px-2 py-0.5 border border-gray-300 text-gray-500 text-xs font-mono rounded-md hover:border-blue-400 hover:text-blue-600 transition"
@@ -1197,9 +1198,10 @@ export default function FileExplorer({ initialPath, onLogout }: { initialPath: s
           onQuickAccess={() => handleQuickAccess(contextMenu.file)}
           onMakePrivate={() => handleMakePrivate(contextMenu.file)}
           onMakePublic={() => handleMakePublic(contextMenu.file)}
-          onToggleOffsite={() => handleToggleOffsite(contextMenu.file)}
+          onToggleOffsite={settings.offsiteBackupEnabled ? () => handleToggleOffsite(contextMenu.file) : undefined}
           onVersions={() => { setVersionsFile(contextMenu.file); setContextMenu(null) }}
           offsiteBackup={contextMenu.file.backupTier === 2}
+          sharingEnabled={settings.sharingEnabled}
           isPrivate={contextMenu.file.isPrivate}
           onClose={() => setContextMenu(null)}
         />
@@ -1222,7 +1224,7 @@ export default function FileExplorer({ initialPath, onLogout }: { initialPath: s
       )}
 
       {showSettings && (
-        <SettingsModal onClose={() => setShowSettings(false)} />
+        <SettingsModal onClose={() => setShowSettings(false)} onSettingsChanged={onSettingsChanged} />
       )}
 
       {showAuditLog && (

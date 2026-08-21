@@ -818,3 +818,41 @@ export async function getDiskUsage() {
   if (!res.ok) throw new Error('Failed to get disk usage')
   return res.json()
 }
+
+// ---- Instance settings (admin-configurable) ----
+
+export type InstanceSettings = {
+  instanceName: string
+  offsiteBackupEnabled: boolean
+  sharingEnabled: boolean
+}
+
+export const DEFAULT_SETTINGS: InstanceSettings = {
+  instanceName: 'CloudDrive',
+  offsiteBackupEnabled: true,
+  sharingEnabled: true,
+}
+
+// Readable by any authenticated user (the UI needs the flags). Falls back to
+// defaults so a fetch hiccup never hides features.
+export async function getSettings(): Promise<InstanceSettings> {
+  try {
+    const res = await fetch(`${API_BASE}/settings`, FETCH_OPTS)
+    if (!res.ok) return DEFAULT_SETTINGS
+    return { ...DEFAULT_SETTINGS, ...(await res.json()) }
+  } catch {
+    return DEFAULT_SETTINGS
+  }
+}
+
+// Admin-only (server re-checks the role).
+export async function updateSettings(s: InstanceSettings): Promise<InstanceSettings> {
+  const res = await fetch(`${API_BASE}/settings`, {
+    ...FETCH_OPTS,
+    method: 'POST',
+    headers: await writeHeaders(),
+    body: JSON.stringify(s),
+  })
+  if (!res.ok) throw new Error((await res.text()) || 'Failed to save settings')
+  return res.json()
+}

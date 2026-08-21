@@ -87,6 +87,7 @@ func main() {
 	tagStore := services.NewTagStore(storageRoot)
 	notifStore := services.NewNotificationStore(storageRoot)
 	tierStore := services.NewBackupTierStore(storageRoot)
+	settingsStore := services.NewSettingsStore(storageRoot)
 
 	// When an item is permanently removed from trash, drop its per-path
 	// metadata so a path of the same name created later doesn't inherit it.
@@ -126,6 +127,9 @@ func main() {
 	notifHandler := handlers.NewNotificationHandler(notifStore)
 	adminHandler := handlers.NewAdminHandler(userStore, auditLog)
 	tierHandler := handlers.NewBackupTierHandler(tierStore, permStore, auditLog)
+	tierHandler.SetSettings(settingsStore)
+	shareHandler.SetSettings(settingsStore)
+	settingsHandler := handlers.NewSettingsHandler(settingsStore, auditLog)
 
 	mux := http.NewServeMux()
 
@@ -142,6 +146,10 @@ func main() {
 	registerNotificationRoutes(mux, notifHandler, authMiddleware, protectedWrite)
 	registerAdminRoutes(mux, adminHandler, authMiddleware, protectedWrite)
 	registerMiscRoutes(mux, auditHandler, tierHandler, diskHandler, versionHandler, authMiddleware, protectedWrite)
+	// Instance settings: any authed user may read (the UI needs the flags);
+	// only admins may write (enforced in the handler too).
+	mux.HandleFunc("GET /api/settings", authMiddleware.Wrap(settingsHandler.Get))
+	mux.HandleFunc("POST /api/settings", protectedWrite(settingsHandler.Update))
 
 	// WebDAV (opt-in): mount the storage as a network drive. Uses Basic Auth
 	// (no MFA), so it's disabled unless explicitly enabled.

@@ -48,7 +48,11 @@ type ShareHandler struct {
 	pwLimiter ShareRateLimiter
 	dlLimiter ShareRateLimiter // optional: throttles the public directory-zip endpoint per IP
 	permStore *services.PermissionStore
+	settings  *services.SettingsStore // optional; gates the sharing feature
 }
+
+// SetSettings wires the instance settings so sharing can be disabled instance-wide.
+func (h *ShareHandler) SetSettings(s *services.SettingsStore) { h.settings = s }
 
 func NewShareHandler(root string, permStore *services.PermissionStore, audit *services.AuditLogger, pwLimiter ShareRateLimiter) *ShareHandler {
 	h := &ShareHandler{
@@ -187,6 +191,11 @@ func (h *ShareHandler) Create(w http.ResponseWriter, r *http.Request) {
 	}
 	if err := decodeJSON(w, r, &req); err != nil {
 		http.Error(w, "Invalid request", http.StatusBadRequest)
+		return
+	}
+
+	if h.settings != nil && !h.settings.Get().SharingEnabled {
+		http.Error(w, "Sharing is disabled on this instance", http.StatusForbidden)
 		return
 	}
 

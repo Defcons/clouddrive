@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { checkAuth, getCurrentUser, getSetupStatus, setOnAuthExpired } from './api'
+import { checkAuth, getCurrentUser, getSetupStatus, setOnAuthExpired, getSettings, DEFAULT_SETTINGS, type InstanceSettings } from './api'
 import LoginPage from './components/LoginPage'
 import SetupPage from './components/SetupPage'
 import FileExplorer from './components/FileExplorer'
@@ -9,6 +9,13 @@ import ConfirmModalHost from './components/ConfirmModal'
 export default function App() {
   const [authenticated, setAuthenticated] = useState<boolean | null>(null)
   const [needsSetup, setNeedsSetup] = useState<boolean | null>(null)
+  const [settings, setSettings] = useState<InstanceSettings>(DEFAULT_SETTINGS)
+
+  const refreshSettings = () =>
+    getSettings().then((s) => {
+      setSettings(s)
+      document.title = s.instanceName
+    })
 
   useEffect(() => {
     // On first run (no accounts yet) show the setup wizard; otherwise fall
@@ -29,6 +36,12 @@ export default function App() {
     setOnAuthExpired(() => setAuthenticated(false))
     return () => setOnAuthExpired(null)
   }, [])
+
+  // Once signed in, load the instance settings (name + feature flags).
+  useEffect(() => {
+    if (authenticated) refreshSettings()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [authenticated])
 
   if (needsSetup === null || authenticated === null) {
     return (
@@ -53,6 +66,8 @@ export default function App() {
         <FileExplorer
           initialPath={getCurrentUser().homeFolder}
           onLogout={() => setAuthenticated(false)}
+          settings={settings}
+          onSettingsChanged={refreshSettings}
         />
       )}
       <ConfirmModalHost />

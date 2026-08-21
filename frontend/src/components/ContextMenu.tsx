@@ -23,9 +23,10 @@ interface Props {
   isPrivate?: boolean
   isZip?: boolean
   offsiteBackup?: boolean
+  sharingEnabled?: boolean
 }
 
-export default function ContextMenu({ x, y, onPreview, onShare, onSafeShare, onDownload, onCut, onCopy, onRename, onDelete, onQuickAccess, onMakePrivate, onMakePublic, onExtract, onToggleOffsite, onVersions, onClose, isDir, canPreview, isPrivate, isZip, offsiteBackup }: Props) {
+export default function ContextMenu({ x, y, onPreview, onShare, onSafeShare, onDownload, onCut, onCopy, onRename, onDelete, onQuickAccess, onMakePrivate, onMakePublic, onExtract, onToggleOffsite, onVersions, onClose, isDir, canPreview, isPrivate, isZip, offsiteBackup, sharingEnabled }: Props) {
   const ref = useRef<HTMLDivElement>(null)
 
   const isMobile = typeof window !== 'undefined' && window.innerWidth < 768
@@ -91,24 +92,28 @@ export default function ContextMenu({ x, y, onPreview, onShare, onSafeShare, onD
           Version history
         </button>
       )}
-      <button
-        onClick={onShare}
-        className="w-full text-left px-4 py-3 md:px-3 md:py-2 text-sm hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center gap-2"
-      >
-        <svg className="w-4 h-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z" />
-        </svg>
-        Share
-      </button>
-      <button
-        onClick={onSafeShare}
-        className="w-full text-left px-4 py-3 md:px-3 md:py-2 text-sm hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center gap-2"
-      >
-        <svg className="w-4 h-4 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
-        </svg>
-        Safe Share
-      </button>
+      {sharingEnabled !== false && (
+        <>
+          <button
+            onClick={onShare}
+            className="w-full text-left px-4 py-3 md:px-3 md:py-2 text-sm hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center gap-2"
+          >
+            <svg className="w-4 h-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z" />
+            </svg>
+            Share
+          </button>
+          <button
+            onClick={onSafeShare}
+            className="w-full text-left px-4 py-3 md:px-3 md:py-2 text-sm hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center gap-2"
+          >
+            <svg className="w-4 h-4 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+            </svg>
+            Safe Share
+          </button>
+        </>
+      )}
       {isDir && onQuickAccess && (
         <button
           onClick={onQuickAccess}

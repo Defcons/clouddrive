@@ -4,12 +4,14 @@ import { useDialog } from '../hooks/useDialog'
 import MfaSection from './MfaSection'
 import SessionsSection from './SessionsSection'
 import UserManagement from './UserManagement'
+import InstanceSettings from './InstanceSettings'
 
 interface Props {
   onClose: () => void
+  onSettingsChanged: () => void
 }
 
-export default function SettingsModal({ onClose }: Props) {
+export default function SettingsModal({ onClose, onSettingsChanged }: Props) {
   const [currentPassword, setCurrentPassword] = useState('')
   const [newPassword, setNewPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
@@ -154,6 +156,8 @@ export default function SettingsModal({ onClose }: Props) {
 
           {user.role === 'admin' && (
             <>
+              <hr className="border-gray-100 dark:border-gray-700" />
+              <InstanceSettings onSaved={onSettingsChanged} />
               <hr className="border-gray-100 dark:border-gray-700" />
               <UserManagement />
             </>
