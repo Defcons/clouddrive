@@ -1,10 +1,12 @@
-name: Build & publish image
-# Builds the multi-arch container image and pushes it to GHCR so users can run
-# `docker run ghcr.io/defcons/clouddrive` without building from source.
-# This ONLY publishes an image — it does not deploy (that's deploy.yml).
+name: Build & deploy
+# Builds the multi-arch container image, pushes it to GHCR, then (on master)
+# deploys by PULLING that freshly-built image on the homelab host.
 #
-# Actions are SHA-pinned (matches deploy.yml / audit M4). The `# vN` comment
-# records which release each SHA is, so updates stay readable.
+# `deploy` needs `build`, so the host always pulls the CURRENT commit's image
+# (no one-push lag) and never builds locally — a cold host build OOM'd the small
+# LXC. Pushing a tag (v*) only publishes an image; it does not deploy.
+#
+# Actions are SHA-pinned (audit M4). The `# vN` comment records the release.
 
 on:
   push:
@@ -17,7 +19,7 @@ permissions:
   packages: write
 
 concurrency:
-  group: build-image-${{ github.ref }}
+  group: build-deploy-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -62,3 +64,43 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+  deploy:
+    name: Deploy to homelab (pull the built image)
+    needs: build
+    if: github.ref == 'refs/heads/master'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Connect to Tailscale
+        uses: tailscale/github-action@6cae46e2d796f265265cfcf628b72a32b4d7cade # v3
+        with:
+          oauth-client-id: ${{ secrets.TS_OAUTH_CLIENT_ID }}
+          oauth-secret: ${{ secrets.TS_OAUTH_SECRET }}
+          tags: tag:ci
+          version: latest
+
+      - name: Deploy via SSH over Tailscale
+        uses: appleboy/ssh-action@0ff4204d59e8e51228ff73bce53f80d53301dee2 # v1
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          port: ${{ secrets.DEPLOY_PORT }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          command_timeout: "10m"
+          script: |
+            set -e
+            cd /opt/clouddrive
+            # Fetch anonymously over HTTPS (the repo is public) to update compose/.env.
+            git remote set-url origin https://github.com/Defcons/clouddrive.git
+            git fetch origin
+            git reset --hard origin/master
+            git log -1 --oneline
+            if [ ! -f .env ]; then
+              cp .env.example .env
+              echo "WARNING: .env created from example — update credentials!"
+            fi
+            # Pull the image the build job just published and run it. Never build
+            # on this host. Pull EXPLICITLY: `docker compose pull` skips services
+            # with a build: section, and `--no-build` forbids a silent rebuild.
+            docker pull ghcr.io/defcons/clouddrive:latest
+            docker compose up -d --no-build --force-recreate
